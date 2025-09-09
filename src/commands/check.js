@@ -11,7 +11,7 @@ import { ensurePermissions } from '../utils/guards.js';
 export default {
     data: new SlashCommandBuilder()
         .setName('check')
-        .setDescription('체크리스트를 관리합니다'),
+        .setDescription('☑️ 체크리스트 관리 - 항목을 완료/해제'),
     
     async execute(interaction) {
         if (!await ensurePermissions(interaction)) return;
