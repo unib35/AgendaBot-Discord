@@ -272,7 +272,7 @@ AgendaBot을 효과적으로 사용하기 위한 상세 가이드입니다.
 A: 아니요. 삭제된 안건 번호도 재사용되지 않습니다.
 
 ### Q: 여러 명을 담당자로 지정할 수 있나요?
-A: 현재는 1명만 가능합니다. 추가 담당자는 메모에 기록하세요.
+A: 네 가능합니다.
 
 ### Q: API 키는 안전한가요?
 A: 네. AES-256-GCM으로 암호화되어 저장됩니다.
@@ -303,7 +303,7 @@ A: `⬜` 이모지를 사용해야 합니다. 다른 체크박스 이모지는 �
 
 - GitHub Issues: [문제 신고](https://github.com/unib35/AgendaBot-Discord/issues)
 - Discord: [서버 참여]
-- Email: unib335@github.com
+- Email: jm.jongminlee@gmail.com
 
 ---
 
