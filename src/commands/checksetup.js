@@ -9,7 +9,7 @@ import { decrypt } from '../utils/secret.js';
 export default {
     data: new SlashCommandBuilder()
         .setName('checksetup')
-        .setDescription('현재 서버의 봇 설정을 확인합니다'),
+        .setDescription('🔍 설정 확인 - 현재 서버의 봇 설정 상태 확인'),
     
     async execute(interaction) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
