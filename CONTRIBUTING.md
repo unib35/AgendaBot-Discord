@@ -21,7 +21,7 @@ AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프�
 
 ### 🐛 버그 신고
 
-1. [Issues](https://github.com/yourusername/AgendaBot/issues)에서 이미 보고된 버그인지 확인
+1. [Issues](https://github.com/unib35/AgendaBot-Discord/issues)에서 이미 보고된 버그인지 확인
 2. 새 이슈 생성 시 다음 정보 포함:
    - 버그 설명
    - 재현 방법
@@ -31,7 +31,7 @@ AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프�
 
 ### 💡 기능 제안
 
-1. [Issues](https://github.com/yourusername/AgendaBot/issues)에서 유사한 제안 확인
+1. [Issues](https://github.com/unib35/AgendaBot-Discord/issues)에서 유사한 제안 확인
 2. 새 이슈 생성 시 다음 정보 포함:
    - 기능 설명
    - 사용 사례
@@ -55,11 +55,11 @@ AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프�
 
 ```bash
 # Fork 후 clone
-git clone https://github.com/yourusername/AgendaBot.git
-cd AgendaBot
+git clone https://github.com/unib35/AgendaBot-Discord.git
+cd AgendaBot-Discord
 
 # upstream 추가
-git remote add upstream https://github.com/original/AgendaBot.git
+git remote add upstream https://github.com/unib35/AgendaBot-Discord.git
 ```
 
 ### 2. 브랜치 생성
@@ -244,9 +244,9 @@ npm run dev
 
 ## 질문 및 도움
 
-- [Issues](https://github.com/yourusername/AgendaBot/issues)에 질문 남기기
+- [Issues](https://github.com/unib35/AgendaBot-Discord/issues)에 질문 남기기
 - Discord 서버 참여: [링크]
-- 이메일: your-email@example.com
+- 이메일: jm.jongminlee@gmail.com
 
 ## 라이선스
 
