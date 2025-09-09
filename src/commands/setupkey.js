@@ -11,7 +11,7 @@ import {
 export default {
     data: new SlashCommandBuilder()
         .setName('setupkey')
-        .setDescription('Gemini API 키를 설정합니다 (관리자 전용)')
+        .setDescription('🔑 API 키 설정 - Gemini API 키 등록 (관리자 전용)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
     
     async execute(interaction) {
