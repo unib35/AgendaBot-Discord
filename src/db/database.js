@@ -45,9 +45,57 @@ export function initDatabase() {
             created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
         );
+        
+        CREATE TABLE IF NOT EXISTS templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT,
+            checklist TEXT,
+            visibility TEXT DEFAULT 'guild',
+            created_by TEXT NOT NULL,
+            created_at INTEGER DEFAULT (strftime('%s','now')),
+            updated_at INTEGER DEFAULT (strftime('%s','now'))
+        );
+        
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_templates_guild_key ON templates(guild_id, key);
     `;
 
     db.exec(createTables);
+    
+    // 기존 테이블 마이그레이션 (커럼 추가)
+    try {
+        // guild_settings 테이블에 새로운 커럼들이 있는지 확인
+        const tableInfo = db.pragma('table_info(guild_settings)');
+        const columns = tableInfo.map(col => col.name);
+        
+        // 필요한 커럼들 추가
+        const columnsToAdd = [
+            { name: 'summary_channel_id', type: 'TEXT' },
+            { name: 'weekly_summary_enabled', type: 'INTEGER DEFAULT 1' },
+            { name: 'weekly_summary_cron', type: "TEXT DEFAULT '0 9 * * MON'" },
+            { name: 'week_start', type: "TEXT DEFAULT 'MON'" },
+            { name: 'ai_provider', type: "TEXT DEFAULT 'gemini'" },
+            { name: 'gemini_model', type: "TEXT DEFAULT 'gemini-2.0-flash-exp'" },
+            { name: 'ai_api_key_encrypted', type: 'TEXT' },
+            { name: 'mention_suppress', type: 'INTEGER DEFAULT 1' }
+        ];
+        
+        for (const column of columnsToAdd) {
+            if (!columns.includes(column.name)) {
+                try {
+                    db.exec(`ALTER TABLE guild_settings ADD COLUMN ${column.name} ${column.type}`);
+                    console.log(`➕ 커럼 추가: ${column.name}`);
+                } catch (e) {
+                    // 커럼이 이미 존재할 수 있음
+                }
+            }
+        }
+    } catch (error) {
+        // guild_settings 테이블이 없으면 무시 (위에서 생성됨)
+    }
+    
     console.log('✅ 데이터베이스가 초기화되었습니다');
 }
 
@@ -109,6 +157,15 @@ export function getTopicByMessageId(messageId) {
 export function getTopicByThreadId(threadId) {
     const stmt = db.prepare('SELECT * FROM topics WHERE thread_id = ?');
     return stmt.get(threadId);
+}
+
+export function updateTopicContent(topicId, content) {
+    const stmt = db.prepare(`
+        UPDATE topics 
+        SET content = ?, updated_at = datetime('now') 
+        WHERE id = ?
+    `);
+    return stmt.run(content, topicId);
 }
 
 export function getGuildSettings(guildId) {
@@ -215,6 +272,88 @@ export function upsertGuildSettings(guildId, settings) {
 export function getAllGuildSettings() {
     const stmt = db.prepare('SELECT * FROM guild_settings WHERE weekly_summary_enabled = 1');
     return stmt.all();
+}
+
+/**
+ * 안건 삭제
+ */
+export function deleteTopic(topicId) {
+    const stmt = db.prepare('DELETE FROM topics WHERE id = ?');
+    const result = stmt.run(topicId);
+    return result.changes > 0;
+}
+
+/**
+ * 템플릿 추가
+ */
+export function addTemplate(data) {
+    const stmt = db.prepare(`
+        INSERT INTO templates (guild_id, key, title, body, checklist, visibility, created_by)
+        VALUES (@guild_id, @key, @title, @body, @checklist, @visibility, @created_by)
+    `);
+    
+    const result = stmt.run(data);
+    return result.lastInsertRowid;
+}
+
+/**
+ * 템플릿 조회
+ */
+export function getTemplate(guildId, key) {
+    const stmt = db.prepare(`
+        SELECT * FROM templates 
+        WHERE guild_id = ? AND key = ?
+    `);
+    return stmt.get(guildId, key);
+}
+
+/**
+ * 템플릿 목록 조회
+ */
+export function getTemplates(guildId) {
+    const stmt = db.prepare(`
+        SELECT * FROM templates 
+        WHERE guild_id = ? 
+        ORDER BY created_at DESC
+    `);
+    return stmt.all(guildId);
+}
+
+/**
+ * 템플릿 업데이트
+ */
+export function updateTemplate(guildId, key, data) {
+    const stmt = db.prepare(`
+        UPDATE templates 
+        SET title = @title, 
+            body = @body, 
+            checklist = @checklist,
+            updated_at = (strftime('%s','now'))
+        WHERE guild_id = @guild_id AND key = @key
+    `);
+    
+    const result = stmt.run({
+        guild_id: guildId,
+        key: key,
+        title: data.title,
+        body: data.body,
+        checklist: data.checklist
+    });
+    
+    return result.changes > 0;
+}
+
+/**
+ * 템플릿 삭제
+ */
+export function deleteTemplate(guildId, key) {
+    const stmt = db.prepare(`
+        DELETE FROM templates 
+        WHERE guild_id = ? AND key = ?
+    `);
+    
+    const result = stmt.run(guildId, key);
+    return result.changes > 0;
 }
 
 export function closeDatabase() {
