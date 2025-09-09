@@ -6,6 +6,18 @@
 
 회의 안건을 체계적으로 관리하고 AI로 자동 요약하는 Discord 봇입니다.
 
+<div align="center">
+
+[설치 가이드](#🚀-빠른-시작) •
+[사용법](OPERATION_GUIDE.md) •
+[명령어](#📖-명령어-목록) •
+[기여하기](CONTRIBUTING.md) •
+[변경로그](CHANGELOG.md)
+
+</div>
+
+---
+
 ## ✨ 주요 기능
 
 - 📝 **안건 관리**: 구조화된 안건 등록 및 상태 추적
@@ -14,7 +26,33 @@
 - 📊 **통계 분석**: 기간별 안건 통계 및 진행 현황
 - 🔐 **서버별 설정**: 독립적인 채널/권한/AI 설정 관리
 
+## 📖 문서
+
+| 문서 | 설명 | 대상 |
+|------|------|------|
+| 📚 **[운영 가이드](OPERATION_GUIDE.md)** | 봇 사용법 상세 설명, 플로우, FAQ | 👤 사용자 |
+| 🤝 **[기여 가이드](CONTRIBUTING.md)** | 개발 환경 설정, 코드 스타일, PR 가이드 | 👨‍💻 개발자 |
+| 📝 **[변경 로그](CHANGELOG.md)** | 버전별 변경 사항 및 업데이트 내역 | 📋 모두 |
+| 🔧 **[프로젝트 요약](PROJECT_SUMMARY.md)** | 기술 스택, DB 스키마, 아키텍처 | 🏗️ 개발자 |
+| 🤖 **[Claude 가이드](CLAUDE.md)** | AI 어시스턴트를 위한 코드베이스 가이드 | 🤖 AI |
+
+## 📋 목차
+
+- [🚀 빠른 시작](#🚀-빠른-시작)
+  - [필수 요구사항](#필수-요구사항)
+  - [설치](#설치)
+  - [환경 변수 설정](#환경-변수-설정)
+  - [봇 실행](#봇-실행)
+- [📖 명령어 목록](#📖-명령어-목록)
+- [⚙️ 서버 설정 가이드](#⚙️-서버-설정-가이드)
+- [🏗️ 프로젝트 구조](#🏗️-프로젝트-구조)
+- [🤝 기여하기](#🤝-기여하기)
+- [📝 라이선스](#📝-라이선스)
+- [🔗 유용한 링크](#🔗-유용한-링크)
+
 ## 🚀 빠른 시작
+
+> 📺 **[동영상 튜토리얼](#) | [단계별 가이드](OPERATION_GUIDE.md#🎯-빠른-시작-3단계)**
 
 ### 필수 요구사항
 
@@ -26,8 +64,8 @@
 
 ```bash
 # 저장소 클론
-git clone https://github.com/yourusername/AgendaBot.git
-cd AgendaBot
+git clone https://github.com/unib35/AgendaBot-Discord.git
+cd AgendaBot-Discord
 
 # 의존성 설치
 npm install
@@ -69,6 +107,8 @@ npm run dev
 ```
 
 ## 📖 명령어 목록
+
+> 💡 **더 자세한 사용법은 [운영 가이드](OPERATION_GUIDE.md)를 참고하세요!**
 
 ### 안건 관리
 | 명령어 | 설명 | 사용 예시 |
@@ -131,7 +171,11 @@ npm run dev
 /setup allowed_role:@운영진
 ```
 
+> 📚 **상세 설정 방법은 [운영 가이드 - 서버 설정](OPERATION_GUIDE.md#⚙️-서버-설정-관리)을 참고하세요!**
+
 ## 🏗️ 프로젝트 구조
+
+> 🔧 **기술적 세부사항은 [프로젝트 요약](PROJECT_SUMMARY.md)을 참고하세요!**
 
 ```
 AgendaBot/
@@ -150,22 +194,39 @@ AgendaBot/
 
 ## 🤝 기여하기
 
-[CONTRIBUTING.md](CONTRIBUTING.md)를 참고해주세요.
+프로젝트에 기여하고 싶으신가요? [기여 가이드](CONTRIBUTING.md)를 확인해주세요!
+
+- 🐛 [버그 신고](https://github.com/unib35/AgendaBot-Discord/issues/new?labels=bug)
+- 💡 [기능 제안](https://github.com/unib35/AgendaBot-Discord/issues/new?labels=enhancement)
+- 📝 [문서 개선](CONTRIBUTING.md#📝-문서-개선)
+- 💻 [코드 기여](CONTRIBUTING.md#💻-코드-기여)
 
 ## 📝 라이선스
 
 MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
 
-## 🔗 링크
+## 🔗 유용한 링크
 
+### 📚 문서
 - [운영 가이드](OPERATION_GUIDE.md) - 봇 사용 방법 상세 설명
+- [기여 가이드](CONTRIBUTING.md) - 개발 참여 방법
 - [변경 로그](CHANGELOG.md) - 버전별 변경 사항
-- [문제 신고](https://github.com/yourusername/AgendaBot/issues)
+- [프로젝트 요약](PROJECT_SUMMARY.md) - 기술 상세 정보
+
+### 🌐 외부 링크
+- [Discord.js 문서](https://discord.js.org)
+- [Gemini API 문서](https://ai.google.dev/docs)
+- [Discord 개발자 포털](https://discord.com/developers/applications)
+
+### 🆘 지원
+- [문제 신고](https://github.com/unib35/AgendaBot-Discord/issues)
+- [토론](https://github.com/unib35/AgendaBot-Discord/discussions)
+- [위키](https://github.com/unib35/AgendaBot-Discord/wiki)
 
 ## 💡 문의
 
-- Discord: your-discord-server
-- Email: your-email@example.com
+- Discord: [Discord 서버 링크]
+- Email: unib35@github.com
 
 ---
 
