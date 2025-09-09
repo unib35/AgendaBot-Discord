@@ -102,11 +102,15 @@ export function sanitizeMarkdown(text) {
         .replace(/\|/g, '\\|');
 }
 
-export function createAgendaCard({ id, title, background, goal, owner, deadline, notes }) {
+export function createAgendaCard({ id, title, background, goal, owner, deadline, notes, checklist }) {
     // 기본값 처리
     const ownerDisplay = owner || '@미정';
     const deadlineDisplay = deadline || '미정';
     const status = '🧭 진행중';
+    const checklistDisplay = checklist || `⬜ 진행 상황 확인
+⬜ 관련 자료 준비
+⬜ 검토 및 피드백
+⬜ 최종 확정`;
     
     // ID가 있으면 포함, 없으면 제목만
     const titleLine = id ? `# 안건 #${id} : ${title}` : `# 안건: ${title}`;
@@ -137,10 +141,7 @@ ${deadlineDisplay}`;
 ${status}
 
 ### 체크리스트
-⬜ 진행 상황 확인
-⬜ 관련 자료 준비
-⬜ 검토 및 피드백
-⬜ 최종 확정`;
+${checklistDisplay}`;
     
     return cardContent;
 }
