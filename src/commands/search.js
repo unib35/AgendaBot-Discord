@@ -19,7 +19,7 @@ const STATUS_EMOJIS = {
 export default {
     data: new SlashCommandBuilder()
         .setName('search')
-        .setDescription('안건을 검색합니다')
+        .setDescription('🔍 안건 검색 - 키워드로 안건 검색')
         .addStringOption(option =>
             option.setName('keyword')
                 .setDescription('검색할 키워드')
