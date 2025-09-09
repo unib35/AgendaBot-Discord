@@ -189,9 +189,9 @@
 
 ## 링크
 
-- [최신 릴리스](https://github.com/yourusername/AgendaBot/releases/latest)
-- [모든 릴리스](https://github.com/yourusername/AgendaBot/releases)
-- [마일스톤](https://github.com/yourusername/AgendaBot/milestones)
+- [최신 릴리스](https://github.com/unib35/AgendaBot-Discord/releases/latest)
+- [모든 릴리스](https://github.com/unib35/AgendaBot-Discord/releases)
+- [마일스톤](https://github.com/unib35/AgendaBot-Discord/milestones)
 
 ---
 
