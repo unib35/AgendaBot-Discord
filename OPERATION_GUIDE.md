@@ -301,9 +301,9 @@ A: `⬜` 이모지를 사용해야 합니다. 다른 체크박스 이모지는 �
 
 ## 📞 지원
 
-- GitHub Issues: [문제 신고](https://github.com/yourusername/AgendaBot/issues)
+- GitHub Issues: [문제 신고](https://github.com/unib35/AgendaBot-Discord/issues)
 - Discord: [서버 참여]
-- Email: support@example.com
+- Email: unib335@github.com
 
 ---
 
