@@ -8,6 +8,21 @@ import {
 import { addTopic, updateTopicThreadId, getGuildSettings } from '../db/database.js';
 import { formatAgendaTitle, sanitizeMarkdown, createAgendaCard, getChecklistProgress } from '../utils/formatter.js';
 
+// 임시 저장소 (userId -> 안건 데이터)
+const pendingAgendas = new Map();
+
+export function getPendingAgenda(userId) {
+    return pendingAgendas.get(userId);
+}
+
+export function setPendingAgenda(userId, data) {
+    pendingAgendas.set(userId, data);
+}
+
+export function clearPendingAgenda(userId) {
+    pendingAgendas.delete(userId);
+}
+
 export async function handleAddAgendaModal(interaction) {
     // customId에서 담당자 ID 추출
     const [modalType, assigneeIdsStr] = interaction.customId.split(':');
@@ -25,11 +40,72 @@ export async function handleAddAgendaModal(interaction) {
         ? assigneeIds.map(id => `<@${id}>`).join(' ') 
         : '@미정';
     
+    // 안건 데이터를 임시 저장
+    setPendingAgenda(interaction.user.id, {
+        title,
+        background,
+        goal,
+        deadline,
+        notes,
+        assigneeIds,
+        owner
+    });
+    
+    // 4단계: 체크리스트 추가 여부 확인
+    const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('✅ 4단계: 체크리스트 추가')
+        .setDescription('안건에 체크리스트 항목을 추가하시겠습니까?\n체크리스트는 작업 진행상황을 추적하는데 유용합니다.')
+        .addFields(
+            { name: '제목', value: title, inline: false },
+            { name: '담당자', value: owner, inline: true },
+            { name: '마감일', value: deadline, inline: true }
+        );
+    
+    const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`add_checklist_${interaction.user.id}`)
+            .setLabel('체크리스트 추가')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('📝'),
+        
+        new ButtonBuilder()
+            .setCustomId(`skip_checklist_${interaction.user.id}`)
+            .setLabel('건너뛰기 (바로 등록)')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('⏩')
+    );
+    
+    await interaction.reply({
+        embeds: [embed],
+        components: [buttons],
+        flags: MessageFlags.Ephemeral
+    });
+}
+
+// 실제 안건 생성 함수
+export async function createAgenda(interaction, checklistItems = []) {
+    const agendaData = getPendingAgenda(interaction.user.id);
+    if (!agendaData) {
+        await interaction.reply({ 
+            content: '❌ 안건 데이터를 찾을 수 없습니다. 다시 시도해주세요.',
+            flags: MessageFlags.Ephemeral 
+        });
+        return;
+    }
+    
+    const { title, background, goal, deadline, notes, assigneeIds, owner } = agendaData;
+    
     // DB에서 길드 설정 가져오기
     const guildSettings = getGuildSettings(interaction.guildId);
     const channelId = guildSettings?.tracking_channel_id || process.env.TRACKING_CHANNEL_ID || interaction.channelId;
     
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    // interaction type에 따라 다르게 처리
+    if (interaction.replied || interaction.deferred) {
+        await interaction.editReply({ content: '⏳ 안건을 생성하는 중입니다...' });
+    } else {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    }
     
     try {
         const channel = await interaction.guild.channels.fetch(channelId);
@@ -52,6 +128,11 @@ export async function handleAddAgendaModal(interaction) {
             created_by: interaction.user.id,
         });
         
+        // 체크리스트 항목 포맷팅 (⬜ 사용)
+        const checklistText = checklistItems.length > 0
+            ? checklistItems.map(item => `⬜ ${item}`).join('\n')
+            : null; // null이면 기본값 사용
+        
         // ID를 포함한 포맷된 카드 내용 생성
         const content = createAgendaCard({
             id: topicId,
@@ -60,7 +141,8 @@ export async function handleAddAgendaModal(interaction) {
             goal,
             owner,
             deadline,
-            notes
+            notes,
+            checklist: checklistText
         });
         
         // 진행률 계산
@@ -111,6 +193,26 @@ export async function handleAddAgendaModal(interaction) {
         
         await thread.send(firstComment);
         
+        // 컨트롤 패널 자동 생성
+        const { createControlPanel } = await import('../utils/controlPanel.js');
+        const controlPanel = createControlPanel({
+            id: topicId,
+            title,
+            status: '진행중',
+            created_at: Math.floor(Date.now() / 1000)
+        });
+        
+        await thread.send({
+            embeds: [controlPanel.embed],
+            components: controlPanel.components
+        });
+        
+        // 체크리스트가 있으면 자동으로 패널 생성
+        if (checklistItems.length > 0) {
+            const { postChecklistPanel } = await import('./checklistPanelHandler.js');
+            await postChecklistPanel(thread, topicId);
+        }
+        
         // 성공 응답
         const embed = new EmbedBuilder()
             .setColor(0x00ff00)
@@ -125,6 +227,9 @@ export async function handleAddAgendaModal(interaction) {
             .setTimestamp();
         
         await interaction.editReply({ embeds: [embed] });
+        
+        // 임시 데이터 정리
+        clearPendingAgenda(interaction.user.id);
         
     } catch (error) {
         console.error('모달에서 안건 추가 중 오류:', error);
