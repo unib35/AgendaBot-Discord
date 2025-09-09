@@ -11,7 +11,7 @@ import { buildCronExpression, parseCronExpression, isValidTime } from '../utils/
 export default {
     data: new SlashCommandBuilder()
         .setName('setup')
-        .setDescription('봇 설정을 구성합니다 (관리자 전용)')
+        .setDescription('⚙️ 봇 설정 - 서버별 설정 구성 (관리자 전용)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addChannelOption(option =>
             option.setName('tracking_channel')
