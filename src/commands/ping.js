@@ -17,7 +17,7 @@ function formatUptime(sec) {
 export default {
     data: new SlashCommandBuilder()
         .setName('ping')
-        .setDescription('봇 헬스체크 (지연시간/업타임)')
+        .setDescription('🏓 상태 확인 - 봇 응답속도 및 가동시간 체크')
     ,
     async execute(interaction) {
         if (!await ensurePermissions(interaction)) return;
