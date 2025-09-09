@@ -1,0 +1,41 @@
+{
+  "name": "agendabot-discord",
+  "version": "4.0.0",
+  "description": "Discord bot for managing meeting agendas with AI-powered summaries",
+  "main": "src/index.js",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unib35/AgendaBot-Discord.git"
+  },
+  "bugs": {
+    "url": "https://github.com/unib35/AgendaBot-Discord/issues"
+  },
+  "homepage": "https://github.com/unib35/AgendaBot-Discord#readme",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node src/deploy-commands.js",
+    "lint": "eslint src/",
+    "test": "node --test"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "agenda",
+    "meeting",
+    "management"
+  ],
+  "author": "unib35",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "better-sqlite3": "^11.5.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "node-cron": "^4.2.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
