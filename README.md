@@ -225,7 +225,7 @@ MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
 ## 💡 문의
 
 - Discord: [Discord 서버 링크]
-- Email: unib35@github.com
+- Email: jm.jongminlee@gmail.com
 
 ---
 
