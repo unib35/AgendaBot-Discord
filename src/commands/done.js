@@ -1,75 +1,88 @@
-import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
-import { getTopic, updateTopicStatus } from '../db/database.js';
-import { formatAgendaTitle, replaceCheckboxes, sanitizeMarkdown } from '../utils/formatter.js';
+import { 
+    SlashCommandBuilder, 
+    EmbedBuilder, 
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    MessageFlags 
+} from 'discord.js';
+import { getTopics } from '../db/database.js';
 import { ensurePermissions } from '../utils/guards.js';
 
 export default {
     data: new SlashCommandBuilder()
         .setName('done')
-        .setDescription('안건을 완료 처리합니다')
-        .addIntegerOption(option =>
-            option.setName('id')
-                .setDescription('완료할 안건 번호')
-                .setRequired(true)),
+        .setDescription('안건을 완료 처리합니다'),
     
     async execute(interaction) {
         if (!await ensurePermissions(interaction)) return;
         
-        const topicId = interaction.options.getInteger('id');
-        
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         
         try {
-            const topic = getTopic(topicId);
+            // 진행중인 안건들 조회
+            const topics = getTopics(interaction.guildId, '진행중');
             
-            if (!topic) {
-                await interaction.editReply(`❌ 안건 #${topicId}을(를) 찾을 수 없습니다.`);
+            if (!topics || topics.length === 0) {
+                await interaction.editReply({
+                    content: '📭 진행중인 안건이 없습니다.',
+                    flags: MessageFlags.Ephemeral
+                });
                 return;
             }
             
-            if (topic.status === '완료') {
-                await interaction.editReply(`ℹ️ 안건 #${topicId}은(는) 이미 완료 상태입니다.`);
-                return;
-            }
+            // 최대 25개까지만 표시 (Discord 제한)
+            const topicsToShow = topics.slice(0, 25);
             
-            updateTopicStatus(topicId, '완료');
-            
-            if (topic.thread_id) {
-                try {
-                    const thread = await interaction.guild.channels.fetch(topic.thread_id);
-                    if (thread) {
-                        const newTitle = formatAgendaTitle(topicId, topic.title, '완료');
-                        await thread.setName(newTitle);
-                    }
-                } catch (error) {
-                    console.error('스레드 제목 업데이트 중 오류:', error);
-                }
-            }
-            
-            if (topic.message_id) {
-                try {
-                    const channel = await interaction.guild.channels.fetch(topic.channel_id);
-                    const message = await channel.messages.fetch(topic.message_id);
-                    const updatedContent = replaceCheckboxes(message.content);
-                    if (updatedContent !== message.content) {
-                        await message.edit(updatedContent);
-                    }
-                } catch (error) {
-                    console.error('메시지 체크박스 업데이트 중 오류:', error);
-                }
-            }
-            
+            // Embed 생성
             const embed = new EmbedBuilder()
-                .setColor(0x00ff00)
-                .setTitle('✅ 안건 완료')
-                .setDescription(`안건 #${topicId} "${sanitizeMarkdown(topic.title)}"이(가) 완료 처리되었습니다.`)
-                .setTimestamp();
+                .setColor(0x5865F2)
+                .setTitle('✅ 안건 완료 처리')
+                .setDescription('완료할 안건을 선택해주세요.')
+                .addFields({
+                    name: '📋 진행중인 안건',
+                    value: topicsToShow.slice(0, 10).map(t => 
+                        `**#${t.id}** - ${t.title}`
+                    ).join('\n') + (topics.length > 10 ? `\n... 외 ${topics.length - 10}개` : ''),
+                    inline: false
+                })
+                .setFooter({ text: '아래 드롭다운에서 안건을 선택하세요' });
             
-            await interaction.editReply({ embeds: [embed] });
+            // Select Menu 생성
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('done_select')
+                .setPlaceholder('🎯 완료할 안건을 선택하세요')
+                .addOptions(
+                    topicsToShow.map(topic => ({
+                        label: `#${topic.id} - ${topic.title.substring(0, 80)}`,
+                        value: String(topic.id),
+                        description: `생성: ${new Date(topic.created_at * 1000).toLocaleDateString('ko-KR')}`,
+                        emoji: '📋'
+                    }))
+                );
+            
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            // 25개 이상인 경우 안내
+            if (topics.length > 25) {
+                embed.addFields({
+                    name: '⚠️ 안내',
+                    value: `전체 ${topics.length}개 중 최근 25개만 표시됩니다.\n특정 안건을 찾으시려면 \`/done id:\` 명령어를 사용하세요.`,
+                    inline: false
+                });
+            }
+            
+            await interaction.editReply({
+                embeds: [embed],
+                components: [row],
+                flags: MessageFlags.Ephemeral
+            });
             
         } catch (error) {
-            console.error('안건 완료 처리 중 오류:', error);
-            await interaction.editReply('❌ 안건 완료 처리 중 오류가 발생했습니다.');
+            console.error('안건 조회 중 오류:', error);
+            await interaction.editReply({
+                content: '❌ 안건을 조회하는 중 오류가 발생했습니다.',
+                flags: MessageFlags.Ephemeral
+            });
         }
     },
 };
