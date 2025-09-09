@@ -4,39 +4,45 @@ import {
     ActionRowBuilder,
     UserSelectMenuBuilder,
     ButtonBuilder,
-    ButtonStyle
+    ButtonStyle,
+    EmbedBuilder
 } from 'discord.js';
 import { ensurePermissions } from '../utils/guards.js';
+import { createDateSelectMenu, createQuickDateButtons } from '../utils/dateHelper.js';
 
 export default {
     data: new SlashCommandBuilder()
         .setName('add')
-        .setDescription('새로운 회의 안건을 등록합니다'),
+        .setDescription('📝 새 안건 등록 - 대화형 메뉴로 단계별 안건 생성'),
     
     async execute(interaction) {
         if (!await ensurePermissions(interaction)) return;
         
-        // 유저 선택 메뉴 생성
-        const userSelectRow = new ActionRowBuilder().addComponents(
-            new UserSelectMenuBuilder()
-                .setCustomId(`add_assignees_${interaction.user.id}`)
-                .setPlaceholder('담당자를 선택하세요 (선택사항)')
-                .setMinValues(0)
-                .setMaxValues(5)
-        );
+        // 안건 등록 플로우 안내 Embed
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('📋 새 안건 등록')
+            .setDescription('안건 등록을 시작합니다. 단계별로 진행해주세요.')
+            .addFields(
+                { name: '👥 1단계', value: '담당자 선택', inline: true },
+                { name: '📅 2단계', value: '마감일 선택', inline: true },
+                { name: '📝 3단계', value: '상세 정보 입력', inline: true },
+                { name: '✅ 4단계', value: '체크리스트 추가 (선택)', inline: true }
+            )
+            .setFooter({ text: '시작하려면 아래 버튼을 클릭하세요' });
         
-        // 다음 버튼
-        const buttonRow = new ActionRowBuilder().addComponents(
+        // 시작 버튼
+        const startButton = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId(`add_next_${interaction.user.id}`)
-                .setLabel('다음 ➡️')
+                .setCustomId(`add_start_${interaction.user.id}`)
+                .setLabel('안건 등록 시작')
                 .setStyle(ButtonStyle.Primary)
-                .setEmoji('📝')
+                .setEmoji('🚀')
         );
         
         await interaction.reply({
-            content: '**📋 안건 등록 (1/2)**\n담당자를 선택한 후 **다음** 버튼을 클릭하세요.\n> 담당자를 지정하지 않으려면 바로 다음을 클릭하세요.',
-            components: [userSelectRow, buttonRow],
+            embeds: [embed],
+            components: [startButton],
             flags: MessageFlags.Ephemeral
         });
     },
