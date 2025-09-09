@@ -24,7 +24,7 @@ function formatDate(date) {
 export default {
     data: new SlashCommandBuilder()
         .setName('testsummary')
-        .setDescription('서버별 AI 설정을 테스트합니다')
+        .setDescription('🧪 AI 테스트 - Gemini API 연결 및 요약 기능 테스트')
         .addBooleanOption(option =>
             option.setName('post')
                 .setDescription('요약 채널에 실제로 게시할지 여부')
