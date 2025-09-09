@@ -28,7 +28,7 @@ const listSessions = new Map();
 export default {
     data: new SlashCommandBuilder()
         .setName('list')
-        .setDescription('안건 목록을 조회합니다')
+        .setDescription('📋 안건 목록 - 등록된 안건 조회 및 필터링')
         .addStringOption(option =>
             option.setName('status')
                 .setDescription('필터링할 상태')
