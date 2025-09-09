@@ -13,7 +13,7 @@ import { ensurePermissions } from '../utils/guards.js';
 export default {
     data: new SlashCommandBuilder()
         .setName('status')
-        .setDescription('안건 상태를 변경합니다'),
+        .setDescription('🔄 상태 변경 - 안건 상태를 변경 (진행중/대기중/완료 등)'),
     
     async execute(interaction) {
         if (!await ensurePermissions(interaction)) return;
