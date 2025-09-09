@@ -11,7 +11,7 @@ import { ensurePermissions } from '../utils/guards.js';
 export default {
     data: new SlashCommandBuilder()
         .setName('done')
-        .setDescription('안건을 완료 처리합니다'),
+        .setDescription('✅ 안건 완료 - 진행중인 안건을 완료 상태로 변경'),
     
     async execute(interaction) {
         if (!await ensurePermissions(interaction)) return;
