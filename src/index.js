@@ -641,6 +641,41 @@ client.on('interactionCreate', async interaction => {
                     content: '❌ 통계 기간 설정 중 오류가 발생했습니다!', 
                     flags: MessageFlags.Ephemeral,
                 };
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.editReply(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            }
+        // 검색 모달들
+        } else if (interaction.customId === 'search_keyword_modal') {
+            // 검색 키워드 모달
+            try {
+                const { handleSearchKeywordModal } = await import('./handlers/searchHandler.js');
+                await handleSearchKeywordModal(interaction);
+            } catch (error) {
+                console.error('검색 키워드 모달 처리 중 오류:', error);
+                const errorMessage = { 
+                    content: '❌ 키워드 설정 중 오류가 발생했습니다!', 
+                    flags: MessageFlags.Ephemeral,
+                };
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            }
+        } else if (interaction.customId === 'search_date_modal') {
+            // 검색 날짜 범위 모달
+            try {
+                const { handleSearchDateModal } = await import('./handlers/searchHandler.js');
+                await handleSearchDateModal(interaction);
+            } catch (error) {
+                console.error('검색 날짜 모달 처리 중 오류:', error);
+                const errorMessage = { 
+                    content: '❌ 날짜 설정 중 오류가 발생했습니다!', 
+                    flags: MessageFlags.Ephemeral,
+                };
                 
                 if (interaction.replied || interaction.deferred) {
                     await interaction.followUp(errorMessage);
@@ -775,6 +810,56 @@ client.on('interactionCreate', async interaction => {
                 // 템플릿 취소 버튼
                 const { handleTemplateCancel } = await import('./handlers/templateHandler.js');
                 await handleTemplateCancel(interaction);
+            
+            // 검색 관련 버튼들
+            } else if (interaction.customId === 'search_keyword') {
+                const { handleSearchKeyword } = await import('./handlers/searchHandler.js');
+                await handleSearchKeyword(interaction);
+            } else if (interaction.customId === 'search_status') {
+                const { handleSearchStatus } = await import('./handlers/searchHandler.js');
+                await handleSearchStatus(interaction);
+            } else if (interaction.customId === 'search_assignee') {
+                const { handleSearchAssignee } = await import('./handlers/searchHandler.js');
+                await handleSearchAssignee(interaction);
+            } else if (interaction.customId === 'search_date') {
+                const { handleSearchDate } = await import('./handlers/searchHandler.js');
+                await handleSearchDate(interaction);
+            } else if (interaction.customId === 'search_execute') {
+                const { handleSearchExecute } = await import('./handlers/searchHandler.js');
+                await handleSearchExecute(interaction);
+            } else if (interaction.customId === 'search_reset') {
+                const { handleSearchReset } = await import('./handlers/searchHandler.js');
+                await handleSearchReset(interaction);
+            } else if (interaction.customId === 'search_cancel') {
+                const { handleSearchCancel } = await import('./handlers/searchHandler.js');
+                await handleSearchCancel(interaction);
+            } else if (interaction.customId === 'search_first') {
+                const { handleSearchFirst } = await import('./handlers/searchHandler.js');
+                await handleSearchFirst(interaction);
+            } else if (interaction.customId === 'search_prev') {
+                const { handleSearchPrev } = await import('./handlers/searchHandler.js');
+                await handleSearchPrev(interaction);
+            } else if (interaction.customId === 'search_next') {
+                const { handleSearchNext } = await import('./handlers/searchHandler.js');
+                await handleSearchNext(interaction);
+            } else if (interaction.customId === 'search_last') {
+                const { handleSearchLast } = await import('./handlers/searchHandler.js');
+                await handleSearchLast(interaction);
+            } else if (interaction.customId === 'search_modify') {
+                const { handleSearchModify } = await import('./handlers/searchHandler.js');
+                await handleSearchModify(interaction);
+            } else if (interaction.customId === 'search_sort') {
+                const { handleSearchSort } = await import('./handlers/searchHandler.js');
+                await handleSearchSort(interaction);
+            } else if (interaction.customId === 'search_close') {
+                const { handleSearchClose } = await import('./handlers/searchHandler.js');
+                await handleSearchClose(interaction);
+            } else if (interaction.customId === 'search_back_to_menu') {
+                const { handleSearchBackToMenu } = await import('./handlers/searchHandler.js');
+                await handleSearchBackToMenu(interaction);
+            } else if (interaction.customId === 'search_back_to_results') {
+                const { handleSearchBackToResults } = await import('./handlers/searchHandler.js');
+                await handleSearchBackToResults(interaction);
             } else if (interaction.customId === 'template_add_new') {
                 // 템플릿 새 템플릿 추가
                 const { handleTemplateAddNew } = await import('./handlers/templateHandler.js');
@@ -1038,6 +1123,18 @@ client.on('interactionCreate', async interaction => {
                 // 링크 안건 선택 메뉴
                 const { handleLinkAgendaSelect } = await import('./handlers/linkHandler.js');
                 await handleLinkAgendaSelect(interaction);
+            } else if (interaction.customId === 'search_status_select') {
+                // 검색 상태 선택
+                const { handleSearchStatusSelect } = await import('./handlers/searchHandler.js');
+                await handleSearchStatusSelect(interaction);
+            } else if (interaction.customId === 'search_assignee_select') {
+                // 검색 담당자 선택
+                const { handleSearchAssigneeSelect } = await import('./handlers/searchHandler.js');
+                await handleSearchAssigneeSelect(interaction);
+            } else if (interaction.customId === 'search_sort_select') {
+                // 검색 정렬 선택
+                const { handleSearchSortSelect } = await import('./handlers/searchHandler.js');
+                await handleSearchSortSelect(interaction);
             } else if (interaction.customId === 'edit_topic_select') {
                 // 수정 안건 선택 메뉴
                 const { handleEditTopicSelect } = await import('./handlers/editHandler.js');
