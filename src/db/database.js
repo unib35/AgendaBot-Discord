@@ -64,6 +64,16 @@ export function initDatabase() {
 
     db.exec(createTables);
     
+    // 검색 성능을 위한 인덱스 추가
+    const createIndexes = `
+        CREATE INDEX IF NOT EXISTS idx_topics_status ON topics(status);
+        CREATE INDEX IF NOT EXISTS idx_topics_created ON topics(created_at);
+        CREATE INDEX IF NOT EXISTS idx_topics_guild_status ON topics(guild_id, status);
+        CREATE INDEX IF NOT EXISTS idx_topics_created_by ON topics(created_by);
+        CREATE INDEX IF NOT EXISTS idx_topics_updated ON topics(updated_at);
+    `;
+    db.exec(createIndexes);
+    
     // 기존 테이블 마이그레이션 (커럼 추가)
     try {
         // guild_settings 테이블에 새로운 커럼들이 있는지 확인
@@ -354,6 +364,112 @@ export function deleteTemplate(guildId, key) {
     
     const result = stmt.run(guildId, key);
     return result.changes > 0;
+}
+
+/**
+ * 고급 검색 기능
+ * @param {Object} params - 검색 파라미터
+ * @returns {Object} - { items, total, page, pageSize }
+ */
+export function advancedSearchTopics(guildId, params = {}) {
+    const {
+        keyword = '',
+        status = null,
+        assignee = null,
+        fromDate = null,
+        toDate = null,
+        sort = 'created_at',
+        order = 'DESC',
+        page = 1,
+        pageSize = 10
+    } = params;
+    
+    let query = `
+        SELECT t.*,
+               (SELECT COUNT(*) FROM topics WHERE guild_id = ?) as total_count
+        FROM topics t
+        WHERE t.guild_id = ?
+    `;
+    
+    const queryParams = [guildId, guildId];
+    const conditions = [];
+    
+    // 키워드 검색 (제목과 본문)
+    if (keyword) {
+        conditions.push(`(t.title LIKE ? OR t.body LIKE ?)`);
+        const searchPattern = `%${keyword}%`;
+        queryParams.push(searchPattern, searchPattern);
+    }
+    
+    // 상태 필터
+    if (status) {
+        conditions.push(`t.status = ?`);
+        queryParams.push(status);
+    }
+    
+    // 담당자 필터
+    if (assignee) {
+        conditions.push(`t.created_by = ?`);
+        queryParams.push(assignee);
+    }
+    
+    // 날짜 범위 필터
+    if (fromDate) {
+        conditions.push(`t.created_at >= ?`);
+        queryParams.push(Math.floor(new Date(fromDate).getTime() / 1000));
+    }
+    
+    if (toDate) {
+        conditions.push(`t.created_at <= ?`);
+        const endOfDay = new Date(toDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        queryParams.push(Math.floor(endOfDay.getTime() / 1000));
+    }
+    
+    // WHERE 절 조합
+    if (conditions.length > 0) {
+        query += ` AND ${conditions.join(' AND ')}`;
+    }
+    
+    // 정렬 (SQL 인젝션 방지를 위해 화이트리스트 사용)
+    const validSorts = ['created_at', 'updated_at', 'title', 'status'];
+    const validOrders = ['ASC', 'DESC'];
+    const sortColumn = validSorts.includes(sort) ? sort : 'created_at';
+    const sortOrder = validOrders.includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+    
+    query += ` ORDER BY t.${sortColumn} ${sortOrder}`;
+    
+    // 페이징
+    const offset = (page - 1) * pageSize;
+    query += ` LIMIT ? OFFSET ?`;
+    queryParams.push(pageSize, offset);
+    
+    // 쿼리 실행
+    const stmt = db.prepare(query);
+    const results = stmt.all(...queryParams);
+    
+    // 전체 개수 계산 (조건에 맞는)
+    let countQuery = `SELECT COUNT(*) as count FROM topics t WHERE t.guild_id = ?`;
+    const countParams = [guildId];
+    
+    if (conditions.length > 0) {
+        countQuery += ` AND ${conditions.join(' AND ')}`;
+        // 카운트 쿼리용 파라미터 (total_count 제외)
+        const conditionParams = queryParams.slice(2, queryParams.length - 2);
+        countParams.push(...conditionParams);
+    }
+    
+    const countStmt = db.prepare(countQuery);
+    const countResult = countStmt.get(...countParams);
+    const total = countResult.count;
+    
+    return {
+        items: results,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize)
+    };
 }
 
 export function closeDatabase() {
