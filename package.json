@@ -16,6 +16,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "deploy": "node src/deploy-commands.js",
+    "deploy:guild": "node src/deploy-guild.js",
+    "deploy:global": "node src/deploy-global.js",
     "lint": "eslint src/",
     "test": "node --test"
   },
