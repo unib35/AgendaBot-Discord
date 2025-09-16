@@ -4,6 +4,17 @@
 [![Node.js](https://img.shields.io/badge/node.js-20%2B-green.svg)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
+<div align="center">
+
+[**운영 가이드**](docs/OPERATION_GUIDE.md) •
+[**기여 가이드**](docs/CONTRIBUTING.md) •
+[**변경 로그**](docs/CHANGELOG.md) •
+[**프로젝트 요약**](docs/PROJECT_SUMMARY.md)
+
+</div>
+
+---
+
 ## Overview
 
 회의 안건을 체계적으로 관리하고 AI로 자동 요약하는 Discord 봇입니다.
@@ -17,15 +28,6 @@
 - **서버별 설정**: 독립적인 채널/권한/AI 설정 관리
 - **템플릿 시스템**: 자주 사용하는 안건 형식 저장 및 재사용
 - **안건 편집**: 제목, 내용, 체크리스트 실시간 수정
-
-## Documentation
-
-| 문서 | 설명 |
-|------|------|
-| **[운영 가이드](docs/OPERATION_GUIDE.md)** | 봇 사용법 상세 설명, 플로우, FAQ |
-| **[기여 가이드](docs/CONTRIBUTING.md)** | 개발 환경 설정, 코드 스타일, PR 가이드 |
-| **[변경 로그](docs/CHANGELOG.md)** | 버전별 변경 사항 및 업데이트 내역 |
-| **[프로젝트 요약](docs/PROJECT_SUMMARY.md)** | 기술 스택, DB 스키마, 아키텍처 |
 
 
 ## Installation
