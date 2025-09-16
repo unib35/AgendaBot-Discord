@@ -1,8 +1,8 @@
-# 🤝 기여 가이드
+# 기여 가이드
 
 AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프로젝트에 기여하는 방법을 안내합니다.
 
-## 📋 목차
+## 목차
 
 - [행동 강령](#행동-강령)
 - [어떻게 기여할 수 있나요?](#어떻게-기여할-수-있나요)
@@ -19,7 +19,7 @@ AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프�
 
 ## 어떻게 기여할 수 있나요?
 
-### 🐛 버그 신고
+### 버그 신고
 
 1. [Issues](https://github.com/unib35/AgendaBot-Discord/issues)에서 이미 보고된 버그인지 확인
 2. 새 이슈 생성 시 다음 정보 포함:
@@ -29,7 +29,7 @@ AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프�
    - 실제 동작
    - 환경 정보 (Node.js 버전, OS 등)
 
-### 💡 기능 제안
+### 기능 제안
 
 1. [Issues](https://github.com/unib35/AgendaBot-Discord/issues)에서 유사한 제안 확인
 2. 새 이슈 생성 시 다음 정보 포함:
@@ -37,13 +37,13 @@ AgendaBot 프로젝트에 기여해주셔서 감사합니다! 이 문서는 프�
    - 사용 사례
    - 예상 구현 방법
 
-### 📝 문서 개선
+### 문서 개선
 
 - README, 가이드, 코드 주석 개선
 - 오타 수정
 - 번역 추가
 
-### 💻 코드 기여
+### 코드 기여
 
 1. Fork 후 feature 브랜치 생성
 2. 코드 작성 및 테스트
@@ -106,7 +106,7 @@ npm run dev
 ### 예시
 
 ```javascript
-// ✅ Good
+// Good
 async function addAgenda(guildId, title, description) {
     try {
         const agendaId = await db.addTopic({
@@ -121,7 +121,7 @@ async function addAgenda(guildId, title, description) {
     }
 }
 
-// ❌ Bad
+// Bad
 function add(g, t, d) {
     db.addTopic({ guild_id: g, title: t, description: d })
         .then(id => id)
@@ -254,4 +254,4 @@ npm run dev
 
 ---
 
-감사합니다! 여러분의 기여가 AgendaBot을 더 좋은 프로젝트로 만듭니다. 🎉
+감사합니다! 여러분의 기여가 AgendaBot을 더 좋은 프로젝트로 만듭니다.
