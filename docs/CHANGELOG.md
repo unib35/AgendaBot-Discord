@@ -14,6 +14,39 @@
 - Slack 연동
 - 고급 권한 관리
 - 데이터 내보내기 기능
+- 알림 커스터마이징
+- 대시보드 통계 확장
+
+---
+
+## [5.1.0] - 2025-01-17
+
+### Added
+- **리마인더 시스템**
+  - `/reminder` - 리마인더 대시보드 명령어 추가
+  - 4단계 리마인더 (7일전, 1일전, 당일, 30분전)
+  - 반복 안건 지원 (매일/매주/격주/매월)
+  - 자동 리마인더 발송 시스템
+  - 리마인더 정책 설정 (기본/사용자정의/없음)
+
+- **데이터베이스 확장**
+  - reminders 테이블 추가
+  - topics 테이블에 meeting_date, reminder_policy, recurrence_pattern 컬럼 추가
+  - 리마인더 관련 인덱스 최적화
+
+- **핸들러 추가**
+  - reminderDashboard.js - 리마인더 대시보드 UI
+  - reminderHandler.js - 리마인더 비즈니스 로직
+  - reminderInteractionHandler.js - 리마인더 인터랙션 처리
+  - recurringHandler.js - 반복 안건 처리
+
+### Changed
+- 안건 생성 시 회의 날짜 및 반복 설정 옵션 추가
+- 서버 설정에 리마인더 기본 정책 옵션 추가
+
+### Fixed
+- 세션 만료 처리 개선
+- 모달 입력 검증 강화
 
 ---
 
