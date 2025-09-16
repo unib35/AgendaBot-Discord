@@ -15,11 +15,11 @@
 
 ---
 
-## Overview
+## 개요
 
 회의 안건을 체계적으로 관리하고 AI로 자동 요약하는 Discord 봇입니다.
 
-## Features
+## 주요 기능
 
 - **안건 관리**: 대화형 메뉴를 통한 단계별 안건 등록 및 상태 추적
 - **체크리스트**: 실시간 진행률 표시 및 일괄 관리
@@ -30,15 +30,15 @@
 - **안건 편집**: 제목, 내용, 체크리스트 실시간 수정
 
 
-## Installation
+## 설치
 
-### Requirements
+### 요구사항
 
 - Node.js 20.0 이상
 - Discord Bot Token ([Discord Developer Portal](https://discord.com/developers/applications))
 - Google AI Studio API Key ([Google AI Studio](https://makersuite.google.com/app/apikey)) - AI 요약 기능용 (선택)
 
-### Step 1: Clone and Install
+### 1단계: 저장소 클론 및 설치
 
 ```bash
 # 저장소 클론
@@ -53,7 +53,7 @@ cp .env.example .env
 # .env 파일을 편집하여 필요한 값 입력
 ```
 
-### Step 2: Configure Environment
+### 2단계: 환경 설정
 
 `.env` 파일에 다음 값들을 설정하세요:
 
@@ -71,7 +71,7 @@ TIMEZONE=Asia/Seoul  # 시간대 설정
 ENCRYPTION_SECRET=   # API 키 암호화용 (openssl rand -hex 32)
 ```
 
-### Step 3: Run Bot
+### 3단계: 봇 실행
 
 ```bash
 # 슬래시 명령어 Discord에 배포 (최초 1회 또는 명령어 변경 시)
@@ -84,7 +84,7 @@ npm start
 npm run dev
 ```
 
-## Commands
+## 명령어
 
 ### 안건 관리
 | 명령어 | 설명 | 특징 |
@@ -129,7 +129,7 @@ npm run dev
 | `/help` | 도움말 | 전체 도움말 또는 특정 명령어 상세 설명 |
 | `/ping` | 상태 확인 | 응답 속도 및 가동 시간 표시 |
 
-## Server Configuration
+## 서버 설정
 
 ### 1. 초기 설정
 ```
@@ -151,7 +151,7 @@ npm run dev
 ```
 
 
-## Project Structure
+## 프로젝트 구조
 
 ```
 AgendaBot/
@@ -173,7 +173,7 @@ AgendaBot/
 └── README.md         # 이 문서
 ```
 
-## Contributing
+## 기여하기
 
 프로젝트에 기여하고 싶으신가요? [기여 가이드](docs/CONTRIBUTING.md)를 확인해주세요!
 
@@ -182,29 +182,29 @@ AgendaBot/
 - [문서 개선](docs/CONTRIBUTING.md#문서-개선)
 - [코드 기여](docs/CONTRIBUTING.md#코드-기여)
 
-## License
+## 라이선스
 
-MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
+MIT 라이선스 - 자세한 내용은 [LICENSE](LICENSE) 파일을 참고하세요.
 
-## Links
+## 링크
 
-### Documentation
+### 문서
 - [운영 가이드](docs/OPERATION_GUIDE.md) - 봇 사용 방법 상세 설명
 - [기여 가이드](docs/CONTRIBUTING.md) - 개발 참여 방법
 - [변경 로그](docs/CHANGELOG.md) - 버전별 변경 사항
 - [프로젝트 요약](docs/PROJECT_SUMMARY.md) - 기술 상세 정보
 
-### External Links
+### 외부 링크
 - [Discord.js 문서](https://discord.js.org)
 - [Gemini API 문서](https://ai.google.dev/docs)
 - [Discord 개발자 포털](https://discord.com/developers/applications)
 
-### Support
+### 지원
 - [문제 신고](https://github.com/unib35/AgendaBot-Discord/issues)
 - [토론](https://github.com/unib35/AgendaBot-Discord/discussions)
 - [위키](https://github.com/unib35/AgendaBot-Discord/wiki)
 
-## Contact
+## 문의
 
 - Discord: [Discord 서버 링크]
 - Email: jm.jongminlee@gmail.com
