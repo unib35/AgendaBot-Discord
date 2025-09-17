@@ -8,7 +8,9 @@ import {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ActionRowBuilder
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } from 'discord.js';
 import { config } from 'dotenv';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -43,7 +45,12 @@ import {
     handleAddStart,
     handleSkipAssignees,
     handleToDate,
-    handleAddFinal
+    handleAddFinal,
+    handleMeetingModal,
+    handleSkipMeeting,
+    clearAllPending,
+    setPendingMeetingTime,
+    setPendingReminderPolicy
 } from './handlers/addAgendaHandler.js';
 import { 
     handleDateSelect, 
@@ -53,6 +60,8 @@ import {
 } from './handlers/dateHandler.js';
 import { summarizeForGuild } from './ai/summarize-gemini.js';
 import { encrypt, decrypt } from './utils/secret.js';
+import { processPendingReminders } from './services/reminderService.js';
+import { scheduleChecklistPush } from './services/checklistPushService.js';
 
 config();
 
@@ -97,6 +106,22 @@ function formatDate(date) {
 client.once('clientReady', () => {
     console.log(`✅ ${client.user.tag}로 로그인했습니다!`);
     initDatabase();
+
+    // 리마인더 스케줄러 시작 (1분마다 검사)
+    const reminderTimezone = process.env.TIMEZONE || 'Asia/Seoul';
+    cron.schedule('* * * * *', async () => {
+        try {
+            const count = await processPendingReminders(client);
+            if (count > 0) {
+                console.log(`🔔 ${count}건의 리마인더를 전송했습니다`);
+            }
+        } catch (error) {
+            console.error('리마인더 처리 중 오류:', error);
+        }
+    }, { timezone: reminderTimezone });
+
+    // 체크리스트 푸시 스케줄러 시작
+    scheduleChecklistPush(client);
     
     // 서버별 자동 요약 스케줄 설정
     const timezone = process.env.TIMEZONE || 'Asia/Seoul';
@@ -257,16 +282,21 @@ client.on('interactionCreate', async interaction => {
         try {
             await command.execute(interaction);
         } catch (error) {
-            console.error(error);
+            console.error('명령어 실행 오류:', error);
             const errorMessage = { 
                 content: '❌ 명령 실행 중 오류가 발생했습니다!', 
                 flags: MessageFlags.Ephemeral,
             };
             
-            if (interaction.replied || interaction.deferred) {
-                await interaction.followUp(errorMessage);
-            } else {
-                await interaction.reply(errorMessage);
+            try {
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            } catch (replyError) {
+                // 이미 응답했거나 타임아웃된 경우 무시
+                console.error('에러 메시지 전송 실패:', replyError.message);
             }
         }
     }
@@ -277,8 +307,7 @@ client.on('interactionCreate', async interaction => {
             try {
                 await handleAddAgendaModal(interaction);
                 // 처리 완료 후 임시 데이터 정리
-                clearPendingAssignees(interaction.user.id);
-                clearPendingDate(interaction.user.id);
+                clearAllPending(interaction.user.id);
             } catch (error) {
                 console.error('모달 처리 중 오류:', error);
                 const errorMessage = { 
@@ -594,6 +623,76 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply(errorMessage);
                 }
             }
+        } else if (interaction.customId.startsWith('reminder_custom_modal_')) {
+            // 커스텀 리마인더 시간 모달 처리
+            const { handleCustomTimeModal } = await import('./handlers/addAgendaHandler.js');
+            await handleCustomTimeModal(interaction);
+        } else if (interaction.customId.startsWith('add_meeting_time_')) {
+            // 회의 시간 모달 제출 처리
+            try {
+                const userId = interaction.customId.replace('add_meeting_time_', '');
+                const dateStr = interaction.fields.getTextInputValue('meetingDate');
+                const timeStr = interaction.fields.getTextInputValue('meetingTime');
+                const reminderPolicy = interaction.fields.getTextInputValue('reminderPolicy') || 'default';
+
+                // 입력값 형식 검증
+                const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+                const timePattern = /^\d{2}:\d{2}$/;
+
+                if (!datePattern.test(dateStr) || !timePattern.test(timeStr)) {
+                    await interaction.reply({
+                        content: '❌ 날짜는 YYYY-MM-DD, 시간은 HH:MM 형식으로 입력해주세요.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                    return;
+                }
+
+                // 리마인더 정책 검증
+                const validPolicies = ['default', 'simple', 'all', 'off'];
+                const policy = validPolicies.includes(reminderPolicy) ? reminderPolicy : 'default';
+
+                // 날짜와 시간 파싱 (KST 기준)
+                const meetingDateStr = `${dateStr}T${timeStr}:00+09:00`;
+                const meetingDate = new Date(meetingDateStr);
+
+                // 유효한 날짜인지 확인
+                if (isNaN(meetingDate.getTime())) {
+                    await interaction.reply({
+                        content: '❌ 잘못된 날짜/시간입니다. 유효한 날짜를 입력해주세요.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                    return;
+                }
+
+                // 과거 날짜 검증
+                if (meetingDate.getTime() < Date.now()) {
+                    await interaction.reply({
+                        content: '❌ 과거 시간은 선택할 수 없습니다. 미래 시간을 입력해주세요.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                    return;
+                }
+                
+                // 임시 데이터 저장
+                setPendingMeetingTime(userId, meetingDate.getTime());
+                setPendingReminderPolicy(userId, policy);
+
+                // 3단계: 리마인더 선택 화면으로 이동
+                const { showReminderSelection } = await import('./handlers/addAgendaHandler.js');
+                await showReminderSelection(interaction);
+            } catch (error) {
+                console.error('회의 시간 모달 처리 중 오류:', error);
+                const errorMessage = { 
+                    content: '❌ 회의 시간 설정 중 오류가 발생했습니다!', 
+                    flags: MessageFlags.Ephemeral,
+                };
+                
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            }
         } else if (interaction.customId.startsWith('template_use_variables:')) {
             // 템플릿 변수 입력 모달 처리
             try {
@@ -621,6 +720,96 @@ client.on('interactionCreate', async interaction => {
                 console.error('요약 사용자 지정 기간 모달 처리 중 오류:', error);
                 const errorMessage = { 
                     content: '❌ 요약 기간 설정 중 오류가 발생했습니다!', 
+                    flags: MessageFlags.Ephemeral,
+                };
+                
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            }
+        } else if (interaction.customId.startsWith('reminder_edit_submit_')) {
+            // 리마인더 회의 시간 수정 모달 제출
+            try {
+                const topicId = parseInt(interaction.customId.replace('reminder_edit_submit_', ''));
+                const dateStr = interaction.fields.getTextInputValue('meetingDate');
+                const timeStr = interaction.fields.getTextInputValue('meetingTime');
+                
+                // 날짜와 시간 파싱
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const [hour, minute] = timeStr.split(':').map(Number);
+                
+                const meetingDate = new Date(year, month - 1, day, hour, minute);
+                
+                if (isNaN(meetingDate.getTime())) {
+                    await interaction.reply({
+                        content: '❌ 잘못된 날짜/시간 형식입니다.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                    return;
+                }
+                
+                // 기존 리마인더 삭제 후 새로 생성
+                const { updateTopicMeetingDate, removeTopicReminders, createDefaultReminders } = await import('./services/reminderService.js');
+                await removeTopicReminders(topicId);
+                await updateTopicMeetingDate(topicId, meetingDate.getTime());
+                const reminders = await createDefaultReminders(topicId, meetingDate.getTime(), 'default');
+                
+                await interaction.reply({
+                    content: `✅ 회의 시간이 업데이트되고 ${reminders.length}개의 새 리마인더가 생성되었습니다.\n회의 시간: ${meetingDate.toLocaleString('ko-KR')}`,
+                    flags: MessageFlags.Ephemeral
+                });
+            } catch (error) {
+                console.error('리마인더 수정 모달 처리 중 오류:', error);
+                const errorMessage = { 
+                    content: '❌ 리마인더 수정 중 오류가 발생했습니다!', 
+                    flags: MessageFlags.Ephemeral,
+                };
+                
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp(errorMessage);
+                } else {
+                    await interaction.reply(errorMessage);
+                }
+            }
+        } else if (interaction.customId.startsWith('reminder_add_submit_')) {
+            // 리마인더 추가 모달 제출
+            try {
+                const topicId = parseInt(interaction.customId.replace('reminder_add_submit_', ''));
+                const dateStr = interaction.fields.getTextInputValue('meetingDate');
+                const timeStr = interaction.fields.getTextInputValue('meetingTime');
+                const reminderPolicy = interaction.fields.getTextInputValue('reminderPolicy') || 'default';
+                
+                // 날짜와 시간 파싱
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const [hour, minute] = timeStr.split(':').map(Number);
+                
+                const meetingDate = new Date(year, month - 1, day, hour, minute);
+                
+                if (isNaN(meetingDate.getTime())) {
+                    await interaction.reply({
+                        content: '❌ 잘못된 날짜/시간 형식입니다.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                    return;
+                }
+                
+                // DB 업데이트
+                const { updateTopicMeetingDate, createDefaultReminders } = await import('./services/reminderService.js');
+                await updateTopicMeetingDate(topicId, meetingDate.getTime());
+                
+                // 리마인더 생성
+                const reminders = await createDefaultReminders(topicId, meetingDate.getTime(), reminderPolicy);
+                
+                await interaction.reply({
+                    content: `✅ 회의 일시가 설정되고 ${reminders.length}개의 리마인더가 생성되었습니다.\n회의 시간: ${meetingDate.toLocaleString('ko-KR')}`,
+                    flags: MessageFlags.Ephemeral
+                });
+            } catch (error) {
+                console.error('리마인더 추가 모달 처리 중 오류:', error);
+                const errorMessage = { 
+                    content: '❌ 리마인더 추가 중 오류가 발생했습니다!', 
                     flags: MessageFlags.Ephemeral,
                 };
                 
@@ -700,6 +889,30 @@ client.on('interactionCreate', async interaction => {
                 await handleToDate(interaction);
             } else if (interaction.customId.startsWith('add_final_')) {
                 await handleAddFinal(interaction);
+            } else if (interaction.customId.startsWith('add_meeting_modal_')) {
+                await handleMeetingModal(interaction);
+            } else if (interaction.customId.startsWith('add_skip_meeting_')) {
+                await handleSkipMeeting(interaction);
+            } else if (interaction.customId.startsWith('reminder_toggle_')) {
+                // 커스텀 리마인더 토글 버튼
+                const { handleReminderToggle } = await import('./handlers/addAgendaHandler.js');
+                await handleReminderToggle(interaction);
+            } else if (interaction.customId.startsWith('notification_')) {
+                // 알림 방식 선택 버튼
+                const { handleNotificationType } = await import('./handlers/addAgendaHandler.js');
+                await handleNotificationType(interaction);
+            } else if (interaction.customId.startsWith('add_reminder_continue_')) {
+                // 리마인더 설정 완료 후 다음 단계
+                const { handleReminderContinue } = await import('./handlers/addAgendaHandler.js');
+                await handleReminderContinue(interaction);
+            } else if (interaction.customId.startsWith('reminder_custom_time_')) {
+                // 커스텀 시간 설정 버튼
+                const { handleCustomTimeButton } = await import('./handlers/addAgendaHandler.js');
+                await handleCustomTimeButton(interaction);
+            } else if (interaction.customId.startsWith('reminder_preview_')) {
+                // 리마인더 미리보기 버튼
+                const { handleReminderPreview } = await import('./handlers/addAgendaHandler.js');
+                await handleReminderPreview(interaction);
             } else if (interaction.customId.startsWith('date_quick:') || 
                        interaction.customId.startsWith('date_confirm:') ||
                        interaction.customId === 'date_custom') {
@@ -924,6 +1137,145 @@ client.on('interactionCreate', async interaction => {
                 // 수정 취소 버튼
                 const { handleEditCancel } = await import('./handlers/editHandler.js');
                 await handleEditCancel(interaction);
+            } else if (interaction.customId.startsWith('reminder_snooze_')) {
+                // 리마인더 스누즈 버튼
+                const { handleReminderSnooze } = await import('./handlers/reminderHandler.js');
+                await handleReminderSnooze(interaction);
+            } else if (interaction.customId.startsWith('reminder_dismiss_')) {
+                // 리마인더 확인 버튼
+                const { handleReminderDismiss } = await import('./handlers/reminderHandler.js');
+                await handleReminderDismiss(interaction);
+
+            // 오버듀 리마인더 버튼들
+            } else if (interaction.customId.startsWith('overdue_send_anyway_')) {
+                const reminderId = parseInt(interaction.customId.replace('overdue_send_anyway_', ''));
+                await interaction.update({
+                    content: '✅ 리마인더가 전송되었습니다.',
+                    embeds: interaction.message.embeds,
+                    components: []
+                });
+            } else if (interaction.customId.startsWith('overdue_snooze_')) {
+                const reminderId = parseInt(interaction.customId.replace('overdue_snooze_', ''));
+                const { updateReminderSchedule } = await import('./db/database.js');
+                const newTime = Date.now() + (60 * 60 * 1000); // 1시간 후
+                await updateReminderSchedule(reminderId, newTime);
+                await interaction.update({
+                    content: '⏰ 리마인더가 1시간 후로 스누즈되었습니다.',
+                    embeds: [],
+                    components: []
+                });
+            } else if (interaction.customId.startsWith('overdue_dismiss_')) {
+                const reminderId = parseInt(interaction.customId.replace('overdue_dismiss_', ''));
+                const { markReminderDelivered } = await import('./db/database.js');
+                await markReminderDelivered(reminderId);
+                await interaction.update({
+                    content: '❌ 리마인더가 무시되었습니다.',
+                    embeds: [],
+                    components: []
+                });
+
+            // 리마인더 인터렉티브 UI 버튼들
+            } else if (interaction.customId === 'reminder_list') {
+                const { handleReminderList } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderList(interaction);
+            } else if (interaction.customId === 'reminder_add') {
+                const { handleReminderAdd } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderAdd(interaction);
+            } else if (interaction.customId === 'reminder_manage') {
+                const { handleReminderManage } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderManage(interaction);
+            } else if (interaction.customId === 'reminder_settings') {
+                const { handleReminderSettings } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderSettings(interaction);
+            } else if (interaction.customId === 'reminder_cancel') {
+                const { handleReminderCancel } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderCancel(interaction);
+            } else if (interaction.customId === 'reminder_back') {
+                const { handleReminderBack } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderBack(interaction);
+            } else if (interaction.customId === 'reminder_refresh') {
+                const { handleReminderRefresh } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderRefresh(interaction);
+            } else if (interaction.customId.startsWith('reminder_edit_')) {
+                const topicId = parseInt(interaction.customId.replace('reminder_edit_', ''));
+                // 회의 시간 변경 모달 표시
+                const modal = new ModalBuilder()
+                    .setCustomId(`reminder_edit_submit_${topicId}`)
+                    .setTitle('🕐 회의 일시 수정');
+                
+                const dateInput = new TextInputBuilder()
+                    .setCustomId('meetingDate')
+                    .setLabel('회의 날짜 (YYYY-MM-DD)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('예: 2025-01-20')
+                    .setRequired(true)
+                    .setMaxLength(10);
+                
+                const timeInput = new TextInputBuilder()
+                    .setCustomId('meetingTime')
+                    .setLabel('회의 시간 (HH:MM)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('예: 14:30')
+                    .setRequired(true)
+                    .setMaxLength(5);
+                
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(dateInput),
+                    new ActionRowBuilder().addComponents(timeInput)
+                );
+                
+                await interaction.showModal(modal);
+            } else if (interaction.customId.startsWith('reminder_delete_')) {
+                const topicId = parseInt(interaction.customId.replace('reminder_delete_', ''));
+                const { removeTopicReminders } = await import('./services/reminderService.js');
+                const deletedCount = await removeTopicReminders(topicId);
+                
+                await interaction.update({
+                    content: `✅ 안건 #${topicId}의 리마인더 ${deletedCount}개가 제거되었습니다.`,
+                    embeds: [],
+                    components: [],
+                    flags: MessageFlags.Ephemeral
+                });
+            } else if (interaction.customId.startsWith('reminder_add_modal_')) {
+                // 리마인더 추가 모달 표시
+                const topicId = interaction.customId.replace('reminder_add_modal_', '');
+                
+                const modal = new ModalBuilder()
+                    .setCustomId(`reminder_add_submit_${topicId}`)
+                    .setTitle('🕐 회의 일시 설정');
+                
+                const dateInput = new TextInputBuilder()
+                    .setCustomId('meetingDate')
+                    .setLabel('회의 날짜 (YYYY-MM-DD)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('예: 2025-01-20')
+                    .setRequired(true)
+                    .setMaxLength(10);
+                
+                const timeInput = new TextInputBuilder()
+                    .setCustomId('meetingTime')
+                    .setLabel('회의 시간 (HH:MM)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('예: 14:30')
+                    .setRequired(true)
+                    .setMaxLength(5);
+                
+                const reminderInput = new TextInputBuilder()
+                    .setCustomId('reminderPolicy')
+                    .setLabel('리마인더 설정 (default/simple/all/off)')
+                    .setStyle(TextInputStyle.Short)
+                    .setPlaceholder('default: 1일전,1시간전 / simple: 1시간전')
+                    .setValue('default')
+                    .setRequired(false)
+                    .setMaxLength(10);
+                
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(dateInput),
+                    new ActionRowBuilder().addComponents(timeInput),
+                    new ActionRowBuilder().addComponents(reminderInput)
+                );
+                
+                await interaction.showModal(modal);
             } else if (interaction.customId === 'summary_today') {
                 // 요약 오늘 버튼
                 const { handleSummaryToday } = await import('./handlers/summaryHandler.js');
@@ -968,6 +1320,107 @@ client.on('interactionCreate', async interaction => {
                 // 요약 필터 취소 버튼
                 const { handleSummaryFilterCancel } = await import('./handlers/summaryHandler.js');
                 await handleSummaryFilterCancel(interaction);
+            } else if (interaction.customId.startsWith('panel_')) {
+                // 컨트롤 패널 버튼
+                const { handlePanelButton } = await import('./utils/controlPanel.js');
+                await handlePanelButton(interaction);
+
+            // 리마인더 대시보드 버튼 핸들러
+            } else if (interaction.customId.startsWith('reminder_filter_')) {
+                const { handleFilterButton } = await import('./handlers/reminderDashboard.js');
+                await handleFilterButton(interaction);
+            } else if (interaction.customId === 'reminder_page_prev' || interaction.customId === 'reminder_page_next') {
+                const { handlePageButton } = await import('./handlers/reminderDashboard.js');
+                await handlePageButton(interaction);
+            } else if (interaction.customId === 'reminder_select_all' || interaction.customId === 'reminder_select_none') {
+                const { handleSelectAll } = await import('./handlers/reminderDashboard.js');
+                await handleSelectAll(interaction);
+            } else if (interaction.customId.startsWith('reminder_snooze_')) {
+                const { handleBulkSnooze } = await import('./handlers/reminderDashboard.js');
+                await handleBulkSnooze(interaction);
+            } else if (interaction.customId === 'reminder_delete_selected') {
+                const { handleBulkDelete } = await import('./handlers/reminderDashboard.js');
+                await handleBulkDelete(interaction);
+            } else if (interaction.customId === 'reminder_main_menu') {
+                // 메인 메뉴로 돌아가기
+                const oldDashboard = await import('./handlers/reminderInteractionHandler.js');
+                const embed = new EmbedBuilder()
+                    .setColor(0x5865F2)
+                    .setTitle('🔔 리마인더 관리')
+                    .setDescription('리마인더를 관리할 작업을 선택하세요.')
+                    .addFields(
+                        { name: '📋 대시보드', value: '리마인더 필터링 및 일괄 관리', inline: false },
+                        { name: '➕ 리마인더 추가', value: '안건에 회의 시간과 리마인더 설정', inline: false },
+                        { name: '📝 안건별 리마인더', value: '특정 안건의 리마인더 관리', inline: false },
+                        { name: '⚙️ 리마인더 설정', value: '전역 리마인더 정책 설정', inline: false }
+                    )
+                    .setFooter({ text: '원하는 작업 버튼을 클릭하세요' })
+                    .setTimestamp();
+
+                const buttons = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('reminder_dashboard')
+                        .setLabel('대시보드')
+                        .setStyle(ButtonStyle.Primary)
+                        .setEmoji('📋'),
+                    new ButtonBuilder()
+                        .setCustomId('reminder_add')
+                        .setLabel('리마인더 추가')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('➕'),
+                    new ButtonBuilder()
+                        .setCustomId('reminder_manage')
+                        .setLabel('안건별 관리')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('📝'),
+                    new ButtonBuilder()
+                        .setCustomId('reminder_settings')
+                        .setLabel('설정')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setEmoji('⚙️'),
+                    new ButtonBuilder()
+                        .setCustomId('reminder_cancel')
+                        .setLabel('닫기')
+                        .setStyle(ButtonStyle.Danger)
+                        .setEmoji('❌')
+                );
+
+                await interaction.update({
+                    embeds: [embed],
+                    components: [buttons],
+                    flags: MessageFlags.Ephemeral
+                });
+            } else if (interaction.customId === 'reminder_dashboard') {
+                // 대시보드 열기
+                const { showReminderDashboard } = await import('./handlers/reminderDashboard.js');
+                await showReminderDashboard(interaction, 'today', 0);
+
+            // 반복 회의 버튼 핸들러
+            } else if (interaction.customId.startsWith('add_recurrence_')) {
+                const { showRecurrenceOptions } = await import('./handlers/recurringHandler.js');
+                await showRecurrenceOptions(interaction);
+            } else if (interaction.customId.startsWith('add_recurrence_none_')) {
+                // 1회성 회의 - 바로 최종 등록으로
+                const { handleAddAgendaModal } = await import('./handlers/addAgendaHandler.js');
+                await interaction.update({
+                    content: '✅ 안건을 생성하는 중...',
+                    embeds: [],
+                    components: [],
+                    flags: MessageFlags.Ephemeral
+                });
+            } else if (interaction.customId.startsWith('recurrence_confirm_')) {
+                const { handleRecurrenceConfirm } = await import('./handlers/recurringHandler.js');
+                await handleRecurrenceConfirm(interaction);
+            } else if (interaction.customId.startsWith('recurrence_preview_')) {
+                const { handleRecurrencePreview } = await import('./handlers/recurringHandler.js');
+                await handleRecurrencePreview(interaction);
+            } else if (interaction.customId.startsWith('recurrence_cancel_')) {
+                await interaction.update({
+                    content: '❌ 반복 설정이 취소되었습니다.',
+                    embeds: [],
+                    components: [],
+                    flags: MessageFlags.Ephemeral
+                });
             } else if (interaction.customId === 'stats_today') {
                 // 통계 오늘 버튼
                 const { handleStatsToday } = await import('./handlers/statsHandler.js');
@@ -1087,6 +1540,10 @@ client.on('interactionCreate', async interaction => {
             // 날짜 선택 메뉴 처리
             if (interaction.customId.startsWith('add_date_select_')) {
                 await handleDateSelect(interaction);
+            } else if (interaction.customId.startsWith('reminder_preset_')) {
+                // 리마인더 프리셋 선택 메뉴
+                const { handleReminderPreset } = await import('./handlers/addAgendaHandler.js');
+                await handleReminderPreset(interaction);
             } else if (interaction.customId.startsWith('ck:select:')) {
                 // 체크리스트 패널 선택 처리
                 await handleChecklistSelect(interaction);
@@ -1151,6 +1608,26 @@ client.on('interactionCreate', async interaction => {
                 // 요약 필터 선택 메뉴
                 const { handleSummaryFilterSelect } = await import('./handlers/summaryHandler.js');
                 await handleSummaryFilterSelect(interaction);
+            } else if (interaction.customId === 'reminder_topic_select') {
+                // 리마인더 안건 선택
+                const selectedValue = interaction.values[0];
+                const topicId = parseInt(selectedValue.replace('reminder_select_', ''));
+                const { handleReminderDetail } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderDetail(interaction, topicId);
+            } else if (interaction.customId === 'reminder_manage_select') {
+                // 리마인더 관리 안건 선택
+                const selectedValue = interaction.values[0];
+                const topicId = parseInt(selectedValue.replace('reminder_manage_', ''));
+                const { handleReminderDetail } = await import('./handlers/reminderInteractionHandler.js');
+                await handleReminderDetail(interaction, topicId);
+            } else if (interaction.customId === 'reminder_select_items') {
+                // 리마인더 대시보드 아이템 선택
+                const { handleSelectItems } = await import('./handlers/reminderDashboard.js');
+                await handleSelectItems(interaction);
+            } else if (interaction.customId.startsWith('recurrence_pattern_')) {
+                // 반복 패턴 선택
+                const { handleRecurrencePattern } = await import('./handlers/recurringHandler.js');
+                await handleRecurrencePattern(interaction);
             } else {
                 await handleSelectMenuInteraction(interaction);
             }
