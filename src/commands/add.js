@@ -25,7 +25,7 @@ export default {
             .setDescription('안건 등록을 시작합니다. 단계별로 진행해주세요.')
             .addFields(
                 { name: '👥 1단계', value: '담당자 선택', inline: true },
-                { name: '📅 2단계', value: '마감일 선택', inline: true },
+                { name: '🕐 2단계', value: '회의 일시 설정', inline: true },
                 { name: '📝 3단계', value: '상세 정보 입력', inline: true },
                 { name: '✅ 4단계', value: '체크리스트 추가 (선택)', inline: true }
             )
