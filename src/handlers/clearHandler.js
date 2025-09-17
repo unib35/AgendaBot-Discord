@@ -8,8 +8,8 @@ import {
     ButtonStyle,
     MessageFlags
 } from 'discord.js';
-import { clearSessions, showPreview } from '../commands/clear.js';
-import { deleteTopic, getTopics } from '../db/database.js';
+import { clearSessions, showPreview, executeFastDelete } from '../commands/clear.js';
+import { deleteTopic, getTopics, getRemindersByTopic, deleteRemindersByTopic } from '../db/database.js';
 
 /**
  * 다음 단계 버튼 처리
@@ -456,24 +456,41 @@ async function executeDeletion(interaction, session) {
  */
 async function deleteTopicComplete(guild, topic, results) {
     let success = true;
-    
-    // 1. 메시지 삭제
-    try {
-        const channel = await guild.channels.fetch(topic.channel_id).catch(() => null);
-        if (channel && channel.isTextBased()) {
-            const message = await channel.messages.fetch(topic.message_id).catch(() => null);
-            if (message) {
-                await message.delete();
-                results.deletedMessages++;
+
+    // 1. 리마인더 삭제 (있으면)
+    if (topic.type !== 'reminders_only') {
+        try {
+            if (deleteRemindersByTopic) {
+                deleteRemindersByTopic(topic.id);
+                const reminders = getRemindersByTopic ? getRemindersByTopic(topic.id) : [];
+                if (results.deletedReminders !== undefined) {
+                    results.deletedReminders += reminders.length;
+                }
             }
+        } catch (e) {
+            console.error(`리마인더 삭제 실패 (#${topic.id}):`, e);
         }
-    } catch (e) {
-        console.error(`메시지 삭제 실패 (#${topic.id}):`, e);
-        success = false;
+    }
+
+    // 2. 메시지 삭제
+    if (topic.type !== 'reminders_only') {
+        try {
+            const channel = await guild.channels.fetch(topic.channel_id).catch(() => null);
+            if (channel && channel.isTextBased()) {
+                const message = await channel.messages.fetch(topic.message_id).catch(() => null);
+                if (message) {
+                    await message.delete();
+                    results.deletedMessages++;
+                }
+            }
+        } catch (e) {
+            console.error(`메시지 삭제 실패 (#${topic.id}):`, e);
+            success = false;
+        }
     }
     
-    // 2. 스레드 처리
-    if (topic.thread_id) {
+    // 3. 스레드 처리
+    if (topic.thread_id && topic.type !== 'reminders_only') {
         try {
             const thread = await guild.channels.fetch(topic.thread_id).catch(() => null);
             if (thread && thread.isThread()) {
@@ -496,12 +513,14 @@ async function deleteTopicComplete(guild, topic, results) {
         }
     }
     
-    // 3. DB 삭제
-    try {
-        deleteTopic(topic.id);
-    } catch (e) {
-        console.error(`DB 삭제 실패 (#${topic.id}):`, e);
-        success = false;
+    // 4. DB 삭제
+    if (topic.type !== 'reminders_only') {
+        try {
+            deleteTopic(topic.id);
+        } catch (e) {
+            console.error(`DB 삭제 실패 (#${topic.id}):`, e);
+            success = false;
+        }
     }
     
     return success;
