@@ -1,15 +1,18 @@
-import { 
-    EmbedBuilder, 
-    MessageFlags, 
-    ActionRowBuilder, 
-    ButtonBuilder, 
-    ButtonStyle 
+import {
+    EmbedBuilder,
+    MessageFlags,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } from 'discord.js';
 import { addTopic, updateTopicThreadId, getGuildSettings } from '../db/database.js';
 import { formatAgendaTitle, sanitizeMarkdown, createAgendaCard, getChecklistProgress } from '../utils/formatter.js';
+import { createDefaultReminders } from '../services/reminderService.js';
 
 // 임시 저장소 (userId -> 안건 데이터)
 const pendingAgendas = new Map();
+// 커스텀 리마인더 옵션 임시 저장소
+const pendingCustomOptions = new Map();
 
 export function getPendingAgenda(userId) {
     return pendingAgendas.get(userId);
@@ -21,12 +24,19 @@ export function setPendingAgenda(userId, data) {
 
 export function clearPendingAgenda(userId) {
     pendingAgendas.delete(userId);
+    pendingCustomOptions.delete(userId);
+}
+
+export function setPendingCustomOptions(userId, options) {
+    pendingCustomOptions.set(userId, options);
 }
 
 export async function handleAddAgendaModal(interaction) {
-    // customId에서 담당자 ID 추출
-    const [modalType, assigneeIdsStr] = interaction.customId.split(':');
+    // customId에서 담당자 ID, 회의 시간, 리마인더 정책 추출
+    const [modalType, dataStr] = interaction.customId.split(':');
+    const [assigneeIdsStr, meetingTimeStr, reminderPolicy] = (dataStr || '').split('|');
     const assigneeIds = assigneeIdsStr ? assigneeIdsStr.split(',').filter(Boolean) : [];
+    const meetingTime = meetingTimeStr ? parseInt(meetingTimeStr) : null;
     
     // 모달에서 입력받은 값 가져오기
     const title = interaction.fields.getTextInputValue('agendaTitle');
@@ -48,7 +58,9 @@ export async function handleAddAgendaModal(interaction) {
         deadline,
         notes,
         assigneeIds,
-        owner
+        owner,
+        meetingTime,
+        reminderPolicy: reminderPolicy || 'default'
     });
     
     // 4단계: 체크리스트 추가 여부 확인
@@ -94,7 +106,7 @@ export async function createAgenda(interaction, checklistItems = []) {
         return;
     }
     
-    const { title, background, goal, deadline, notes, assigneeIds, owner } = agendaData;
+    const { title, background, goal, deadline, notes, assigneeIds, owner, meetingTime, reminderPolicy } = agendaData;
     
     // DB에서 길드 설정 가져오기
     const guildSettings = getGuildSettings(interaction.guildId);
@@ -118,7 +130,7 @@ export async function createAgenda(interaction, checklistItems = []) {
         const tempContent = `# 안건: ${title}\n\n잠시만 기다려주세요...`;
         const message = await channel.send(tempContent);
         
-        // DB에 저장하여 ID 획득
+        // DB에 저장하여 ID 획듍
         const topicId = addTopic({
             guild_id: interaction.guildId,
             channel_id: channelId,
@@ -126,12 +138,21 @@ export async function createAgenda(interaction, checklistItems = []) {
             title: title,
             status: '진행중',
             created_by: interaction.user.id,
+            meeting_date: meetingTime,
+            reminder_policy: reminderPolicy || 'default'
         });
         
+        // 회의 시간이 설정된 경우 리마인더 생성
+        if (meetingTime && reminderPolicy !== 'off') {
+            const customOptions = pendingCustomOptions.get(interaction.user.id);
+            await createDefaultReminders(topicId, meetingTime, reminderPolicy, customOptions);
+        }
+        
         // 체크리스트 항목 포맷팅 (⬜ 사용)
+        // 빈 문자열 전달 시 체크리스트 섹션 없음, undefined 시 기본값 사용
         const checklistText = checklistItems.length > 0
             ? checklistItems.map(item => `⬜ ${item}`).join('\n')
-            : null; // null이면 기본값 사용
+            : '';
         
         // ID를 포함한 포맷된 카드 내용 생성
         const content = createAgendaCard({
@@ -195,13 +216,15 @@ export async function createAgenda(interaction, checklistItems = []) {
         
         // 컨트롤 패널 자동 생성
         const { createControlPanel } = await import('../utils/controlPanel.js');
-        const controlPanel = createControlPanel({
+        const controlPanel = await createControlPanel({
             id: topicId,
             title,
             status: '진행중',
-            created_at: Math.floor(Date.now() / 1000)
+            created_at: Date.now(),
+            meeting_date: meetingTime,
+            reminder_policy: reminderPolicy
         });
-        
+
         await thread.send({
             embeds: [controlPanel.embed],
             components: controlPanel.components
