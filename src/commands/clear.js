@@ -11,7 +11,7 @@ import {
     TextInputStyle,
     StringSelectMenuBuilder
 } from 'discord.js';
-import { getTopics, getTopicsByFilter, deleteTopic } from '../db/database.js';
+import { getTopics, getTopicsByFilter, deleteTopic, getRemindersByTopic, deleteRemindersByTopic } from '../db/database.js';
 
 // 삭제 세션 저장소
 const clearSessions = new Map();
@@ -32,7 +32,9 @@ export default {
                     { name: '📅 오래된 안건들 (30일+)', value: 'old' },
                     { name: '🗄️ 아카이브된 스레드', value: 'archived' },
                     { name: '🎯 특정 안건 선택', value: 'select' },
-                    { name: '🔢 안건 번호로 삭제', value: 'topic' }
+                    { name: '🔢 안건 번호로 삭제', value: 'topic' },
+                    { name: '🏃 빠른 삭제 (7일+ 전체)', value: 'fast' },
+                    { name: '🔔 리마인더만 정리', value: 'reminders' }
                 ))
         .addIntegerOption(option =>
             option.setName('topic_id')
@@ -42,7 +44,10 @@ export default {
                 .setDescription('며칠 이전 데이터 (기본 30일)'))
         .addIntegerOption(option =>
             option.setName('limit')
-                .setDescription('최대 개수 (기본 5, 최대 25)')),
+                .setDescription('최대 개수 (기본 5, 최대 25)'))
+        .addBooleanOption(option =>
+            option.setName('skip_confirm')
+                .setDescription('확인 단계 건너뛰기 (위험)')),
 
     async execute(interaction) {
         // 권한 확인
@@ -58,6 +63,7 @@ export default {
         const topicId = interaction.options.getInteger('topic_id');
         const days = interaction.options.getInteger('days') || 30;
         const limit = Math.min(interaction.options.getInteger('limit') || 5, 25);
+        const skipConfirm = interaction.options.getBoolean('skip_confirm') || false;
 
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -99,7 +105,8 @@ export default {
                 options: { topicId, days, limit },
                 userId: interaction.user.id,
                 guildId: interaction.guildId,
-                step: 'preview' // preview -> confirm -> execute
+                step: skipConfirm ? 'execute_fast' : 'preview', // preview -> confirm -> execute
+                skipConfirm
             });
 
             // 10분 후 세션 자동 삭제
@@ -107,8 +114,13 @@ export default {
                 clearSessions.delete(sessionId);
             }, 10 * 60 * 1000);
 
-            // 미리보기 표시
-            await showPreview(interaction, sessionId);
+            // 빠른 삭제 모드이면 바로 실행
+            if (skipConfirm) {
+                await executeFastDelete(interaction, sessionId);
+            } else {
+                // 미리보기 표시
+                await showPreview(interaction, sessionId);
+            }
 
         } catch (error) {
             console.error('Clear 명령 처리 중 오류:', error);
@@ -324,6 +336,26 @@ async function getDeleteTargets(guild, scope, options) {
                 console.error('스레드 조회 실패:', e);
             }
             break;
+
+        case 'fast':
+            // 빠른 삭제: 7일 이상 오래된 모든 완료/취소 안건
+            const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
+            const fastTargets = getTopics(options.guildId, '전체')
+                .filter(t => (t.status === '완료' || t.status === '취소') && t.created_at < sevenDaysAgo)
+                .sort((a, b) => a.created_at - b.created_at);
+            targets.push(...fastTargets.map(t => ({ type: 'topic', ...t })));
+            break;
+
+        case 'reminders':
+            // 리마인더만 정리 (안건은 유지)
+            const topicsWithReminders = getTopics(options.guildId, '전체')
+                .filter(t => {
+                    const reminders = getRemindersByTopic(t.id);
+                    return reminders && reminders.length > 0;
+                })
+                .slice(0, options.limit);
+            targets.push(...topicsWithReminders.map(t => ({ type: 'reminders_only', ...t })));
+            break;
     }
 
     return targets;
@@ -340,7 +372,9 @@ function getScopeDescription(scope, options) {
         'cancelled': '❌ 취소된 안건 정리',
         'old': `📅 ${options.days}일 이상 경과한 안건 정리`,
         'archived': '🗄️ 아카이브된 스레드 정리',
-        'select': '🎯 선택한 안건 삭제'
+        'select': '🎯 선택한 안건 삭제',
+        'fast': '🏃 7일 이상된 완료/취소 안건 전체 삭제',
+        'reminders': '🔔 리마인더만 삭제'
     };
     return descriptions[scope] || '삭제 작업';
 }
@@ -355,7 +389,9 @@ function getEmptyScopeMessage(scope, options) {
         'completed': '완료된 안건이 없습니다.',
         'cancelled': '취소된 안건이 없습니다.',
         'old': `${options.days}일 이상 된 안건이 없습니다.`,
-        'archived': '아카이브된 스레드가 없습니다.'
+        'archived': '아카이브된 스레드가 없습니다.',
+        'fast': '7일 이상된 완료/취소 안건이 없습니다.',
+        'reminders': '리마인더가 있는 안건이 없습니다.'
     };
     return messages[scope] || '조건에 맞는 항목이 없습니다.';
 }
@@ -415,5 +451,108 @@ function getStatusEmoji(status) {
     return emojis[status] || '📋';
 }
 
+/**
+ * 빠른 삭제 실행 (확인 없이)
+ */
+async function executeFastDelete(interaction, sessionId) {
+    const session = clearSessions.get(sessionId);
+    if (!session) return;
+
+    const { scope, targets, options } = session;
+    const totalCount = targets.length;
+
+    if (totalCount === 0) {
+        await interaction.editReply({
+            content: '📦 삭제할 항목이 없습니다.',
+            flags: MessageFlags.Ephemeral
+        });
+        return;
+    }
+
+    // 삭제 실행 Embed
+    const embed = new EmbedBuilder()
+        .setColor(0xFFA500)
+        .setTitle('🏃 빠른 삭제 진행 중...')
+        .setDescription(`총 ${totalCount}개 항목 삭제 중...`)
+        .setTimestamp();
+
+    await interaction.editReply({
+        embeds: [embed],
+        flags: MessageFlags.Ephemeral
+    });
+
+    // 삭제 실행
+    let deletedCount = 0;
+    let failedCount = 0;
+    const errors = [];
+
+    for (const target of targets) {
+        try {
+            if (target.type === 'topic') {
+                // 메시지 삭제
+                const channel = await interaction.guild.channels.fetch(target.channel_id).catch(() => null);
+                if (channel) {
+                    const message = await channel.messages.fetch(target.message_id).catch(() => null);
+                    if (message) await message.delete().catch(() => {});
+                }
+
+                // 스레드 아카이브
+                if (target.thread_id) {
+                    const thread = await interaction.guild.channels.fetch(target.thread_id).catch(() => null);
+                    if (thread && thread.isThread()) {
+                        await thread.setArchived(true);
+                        await thread.setLocked(true);
+                    }
+                }
+
+                // DB 삭제
+                deleteTopic(target.id);
+                deletedCount++;
+            } else if (target.type === 'reminders_only') {
+                // 리마인더만 삭제
+                if (deleteRemindersByTopic) {
+                    deleteRemindersByTopic(target.id);
+                }
+                deletedCount++;
+            }
+        } catch (error) {
+            failedCount++;
+            errors.push(`#${target.id}: ${error.message}`);
+        }
+    }
+
+    // 결과 Embed
+    const resultEmbed = new EmbedBuilder()
+        .setColor(failedCount === 0 ? 0x00FF00 : 0xFFA500)
+        .setTitle(failedCount === 0 ? '✅ 빠른 삭제 완료' : '⚠️ 부분 완료')
+        .setDescription(`${deletedCount}개 성공, ${failedCount}개 실패`)
+        .addFields({
+            name: '📊 처리 결과',
+            value: [
+                `✅ 삭제됨: ${deletedCount}개`,
+                `❌ 실패: ${failedCount}개`,
+                `📊 성공률: ${Math.round((deletedCount / totalCount) * 100)}%`
+            ].join('\n'),
+            inline: false
+        })
+        .setTimestamp();
+
+    if (errors.length > 0) {
+        resultEmbed.addFields({
+            name: '⚠️ 오류',
+            value: errors.slice(0, 5).join('\n').substring(0, 1024),
+            inline: false
+        });
+    }
+
+    // 세션 정리
+    clearSessions.delete(sessionId);
+
+    await interaction.editReply({
+        embeds: [resultEmbed],
+        flags: MessageFlags.Ephemeral
+    });
+}
+
 // Export for handler
-export { clearSessions, showPreview };
+export { clearSessions, showPreview, executeFastDelete };
