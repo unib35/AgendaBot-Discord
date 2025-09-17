@@ -539,8 +539,10 @@ export default {
                     name: '⚙️ 설정',
                     value:
 `**\`/setup\`** - 봇 설정
-**\`/clear\`** - 안건 삭제
-**\`/checksetup\`** - 설정 확인`,
+**\`/setupkey\`** - API 키 설정
+**\`/checksetup\`** - 설정 확인
+**\`/clear\`** - 안건 정리
+**\`/reminder\`** - 리마인더 관리`,
                     inline: true
                 },
                 {
@@ -563,7 +565,7 @@ export default {
                     inline: false
                 }
             )
-            .setFooter({ text: 'AgendaBot v4.5 | 특정 명령어 도움말: /help command:명령어' })
+            .setFooter({ text: 'AgendaBot v5.0 | 특정 명령어 도움말: /help command:명령어' })
             .setTimestamp();
         
         await interaction.reply({ 
