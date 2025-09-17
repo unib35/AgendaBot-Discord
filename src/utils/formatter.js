@@ -107,7 +107,8 @@ export function createAgendaCard({ id, title, background, goal, owner, deadline,
     const ownerDisplay = owner || '@미정';
     const deadlineDisplay = deadline || '미정';
     const status = '🧭 진행중';
-    const checklistDisplay = checklist || `⬜ 진행 상황 확인
+    // checklist가 명시적으로 전달되지 않았을 때만 기본값 사용
+    const checklistDisplay = checklist !== undefined ? checklist : `⬜ 진행 상황 확인
 ⬜ 관련 자료 준비
 ⬜ 검토 및 피드백
 ⬜ 최종 확정`;
@@ -138,10 +139,14 @@ ${deadlineDisplay}`;
 📝 작성 전
 
 **상태**
-${status}
+${status}`;
 
-### 체크리스트
-${checklistDisplay}`;
+    // 체크리스트가 있을 때만 추가
+    if (checklistDisplay) {
+        cardContent += `\n\n### 체크리스트\n${checklistDisplay}`;
+    } else {
+        cardContent += `\n\n### 체크리스트\n체크리스트 항목이 없습니다.`;
+    }
     
     return cardContent;
 }

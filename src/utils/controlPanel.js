@@ -3,22 +3,64 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    StringSelectMenuBuilder
+    StringSelectMenuBuilder,
+    MessageFlags
 } from 'discord.js';
+import { getRemindersByTopic } from '../db/database.js';
 
 /**
  * 안건 컨트롤 패널 생성
  */
-export function createControlPanel(topic) {
+export async function createControlPanel(topic) {
     const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle('🎛️ 안건 관리 패널')
         .setDescription(`**안건 #${topic.id}**: ${topic.title}`)
         .addFields(
             { name: '현재 상태', value: getStatusEmoji(topic.status) + ' ' + topic.status, inline: true },
-            { name: '생성일', value: new Date(topic.created_at * 1000).toLocaleDateString('ko-KR'), inline: true }
+            { name: '생성일', value: new Date(topic.created_at).toLocaleDateString('ko-KR'), inline: true }
         )
         .setFooter({ text: '아래 버튼을 사용하여 안건을 관리하세요' });
+
+    // 리마인더 정보 추가
+    if (topic.meeting_date) {
+        const reminders = getRemindersByTopic(topic.id);
+        const meetingDate = new Date(topic.meeting_date);
+
+        let reminderText = `📅 ${meetingDate.toLocaleString('ko-KR')}\n`;
+
+        if (reminders && reminders.length > 0) {
+            const pendingReminders = reminders.filter(r => !r.delivered_at);
+            const deliveredReminders = reminders.filter(r => r.delivered_at);
+
+            reminderText += `🔔 예정: ${pendingReminders.length}개`;
+            if (deliveredReminders.length > 0) {
+                reminderText += ` | ✅ 전송됨: ${deliveredReminders.length}개`;
+            }
+
+            // 예정된 리마인더 시간 표시
+            if (pendingReminders.length > 0) {
+                reminderText += '\n';
+                const reminderTimes = pendingReminders.map(r => {
+                    const time = new Date(r.scheduled_at);
+                    const type = formatReminderType(r.type);
+                    return `• ${type}`;
+                }).slice(0, 3).join('\n');
+                reminderText += reminderTimes;
+                if (pendingReminders.length > 3) {
+                    reminderText += `\n...외 ${pendingReminders.length - 3}개`;
+                }
+            }
+        } else {
+            reminderText += '🔕 리마인더 없음';
+        }
+
+        embed.addFields({
+            name: '회의 일시 및 리마인더',
+            value: reminderText,
+            inline: false
+        });
+    }
     
     const components = [];
     
@@ -94,6 +136,30 @@ function getStatusEmoji(status) {
         '대기중': '⏳'
     };
     return emojis[status] || '📋';
+}
+
+/**
+ * 리마인더 타입 포맷팅
+ */
+function formatReminderType(type) {
+    // 커스텀 시간 형식 처리
+    const customMatch = type.match(/^(\d+)([mhd])$/);
+    if (customMatch) {
+        const [, num, unit] = customMatch;
+        const unitText = { m: '분', h: '시간', d: '일' }[unit];
+        return `${num}${unitText} 전`;
+    }
+
+    // 프리셋 타입 처리
+    const typeMap = {
+        'before-1d': '1일 전 (09:00)',
+        'before-3h': '3시간 전',
+        'before-1h': '1시간 전',
+        'on-time': '정시',
+        'overdue': '연체'
+    };
+
+    return typeMap[type] || type;
 }
 
 /**
@@ -174,14 +240,14 @@ async function handleStatusChange(interaction, topicId, newStatus) {
         // 상태 변경 알림
         await interaction.followUp({
             content: `✅ 안건 상태가 **${newStatus}**로 변경되었습니다.`,
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
         
     } catch (error) {
         console.error('상태 변경 중 오류:', error);
         await interaction.followUp({
             content: '❌ 상태 변경 중 오류가 발생했습니다.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
     }
 }
@@ -191,19 +257,79 @@ async function handleStatusChange(interaction, topicId, newStatus) {
  */
 async function showChecklistPanel(interaction, topicId) {
     const { postChecklistPanel } = await import('../handlers/checklistPanelHandler.js');
-    
-    await interaction.deferReply({ ephemeral: true });
-    
+    const { getTopic } = await import('../db/database.js');
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     try {
-        await postChecklistPanel(interaction.channel, topicId);
-        await interaction.editReply({
-            content: '✅ 체크리스트 패널이 생성되었습니다.',
-            ephemeral: true
-        });
+        // 먼저 안건이 존재하는지 확인
+        const topic = getTopic(topicId);
+        if (!topic) {
+            await interaction.editReply({
+                content: '❌ 안건을 찾을 수 없습니다.',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        // 스레드인지 확인
+        if (!interaction.channel.isThread()) {
+            await interaction.editReply({
+                content: '⚠️ 체크리스트 패널은 안건 스레드에서만 생성할 수 있습니다.',
+                flags: MessageFlags.Ephemeral
+            });
+            return;
+        }
+
+        console.log(`\n체크리스트 패널 생성 시작: 안건 #${topicId}`);
+        const panelMessage = await postChecklistPanel(interaction.channel, topicId);
+
+        if (panelMessage) {
+            await interaction.editReply({
+                content: '✅ 체크리스트 패널이 생성되었습니다. 스레드를 확인해주세요.',
+                flags: MessageFlags.Ephemeral
+            });
+        } else {
+            // 스레드에서 실제 안건 메시지 찾기
+            try {
+                const messages = await interaction.channel.messages.fetch({ limit: 20 });
+                const agendaMessage = messages.find(msg =>
+                    msg.content.includes(`# 안건 #${topicId}`) ||
+                    (msg.content.includes('### 체크리스트') && msg.author.id === interaction.client.user.id)
+                );
+
+                let feedback = '⚠️ ';
+                if (!agendaMessage) {
+                    feedback += '안건 메시지를 찾을 수 없습니다.';
+                } else {
+                    const hasChecklistSection = agendaMessage.content.includes('### 체크리스트');
+                    const hasCheckboxes = agendaMessage.content.includes('⬜') || agendaMessage.content.includes('☑️');
+
+                    if (!hasChecklistSection) {
+                        feedback += '안건에 체크리스트 셉션이 없습니다.';
+                    } else if (!hasCheckboxes) {
+                        feedback += '체크리스트 섹션은 있지만 항목이 없습니다. `/addcheck` 명령어로 항목을 추가해주세요.';
+                    } else {
+                        feedback += '체크리스트 파싱에 실패했습니다. 관리자에게 문의해주세요.';
+                    }
+                }
+
+                await interaction.editReply({
+                    content: feedback,
+                    flags: MessageFlags.Ephemeral
+                });
+            } catch (err) {
+                await interaction.editReply({
+                    content: '⚠️ 체크리스트가 없거나 패널을 생성할 수 없습니다.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+        }
     } catch (error) {
+        console.error('체크리스트 패널 생성 중 오류:', error);
         await interaction.editReply({
-            content: '❌ 체크리스트 패널 생성 중 오류가 발생했습니다.',
-            ephemeral: true
+            content: `❌ 체크리스트 패널 생성 중 오류가 발생했습니다: ${error.message}`,
+            flags: MessageFlags.Ephemeral
         });
     }
 }
@@ -251,7 +377,7 @@ async function refreshPanel(interaction, topicId) {
             return;
         }
         
-        const { embed, components } = createControlPanel(topic);
+        const { embed, components } = await createControlPanel(topic);
         await interaction.editReply({
             embeds: [embed],
             components: components
@@ -261,7 +387,7 @@ async function refreshPanel(interaction, topicId) {
         console.error('패널 새로고침 중 오류:', error);
         await interaction.followUp({
             content: '❌ 새로고침 중 오류가 발생했습니다.',
-            ephemeral: true
+            flags: MessageFlags.Ephemeral
         });
     }
 }
