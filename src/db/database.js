@@ -10,6 +10,9 @@ const db = new Database(
     { verbose: process.env.SQL_DEBUG ? console.log : undefined }
 );
 
+// SQLite 외래키 제약 활성화
+db.pragma('foreign_keys = ON');
+
 export function initDatabase() {
     const createTables = `
         CREATE TABLE IF NOT EXISTS topics (
@@ -21,8 +24,8 @@ export function initDatabase() {
             title TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT '진행중',
             created_by TEXT NOT NULL,
-            created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
         );
 
         CREATE INDEX IF NOT EXISTS idx_guild_status ON topics(guild_id, status);
@@ -42,8 +45,8 @@ export function initDatabase() {
             gemini_model TEXT DEFAULT 'gemini-2.0-flash-exp',
             ai_api_key_encrypted TEXT,
             mention_suppress INTEGER DEFAULT 1,
-            created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
-            updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
         );
         
         CREATE TABLE IF NOT EXISTS templates (
@@ -55,8 +58,8 @@ export function initDatabase() {
             checklist TEXT,
             visibility TEXT DEFAULT 'guild',
             created_by TEXT NOT NULL,
-            created_at INTEGER DEFAULT (strftime('%s','now')),
-            updated_at INTEGER DEFAULT (strftime('%s','now'))
+            created_at INTEGER DEFAULT (unixepoch() * 1000),
+            updated_at INTEGER DEFAULT (unixepoch() * 1000)
         );
         
         CREATE UNIQUE INDEX IF NOT EXISTS idx_templates_guild_key ON templates(guild_id, key);
@@ -89,7 +92,8 @@ export function initDatabase() {
             { name: 'ai_provider', type: "TEXT DEFAULT 'gemini'" },
             { name: 'gemini_model', type: "TEXT DEFAULT 'gemini-2.0-flash-exp'" },
             { name: 'ai_api_key_encrypted', type: 'TEXT' },
-            { name: 'mention_suppress', type: 'INTEGER DEFAULT 1' }
+            { name: 'mention_suppress', type: 'INTEGER DEFAULT 1' },
+            { name: 'reminder_default_policy', type: "TEXT DEFAULT 'default'" }
         ];
         
         for (const column of columnsToAdd) {
@@ -106,23 +110,86 @@ export function initDatabase() {
         // guild_settings 테이블이 없으면 무시 (위에서 생성됨)
     }
     
+    // 리마인더 기능을 위한 테이블 추가
+    try {
+        // topics 테이블에 meeting_date 컬럼 추가
+        const topicsInfo = db.pragma('table_info(topics)');
+        const topicsColumns = topicsInfo.map(col => col.name);
+        
+        const topicsColumnsToAdd = [
+            { name: 'meeting_date', type: 'INTEGER' },
+            { name: 'reminder_policy', type: "TEXT DEFAULT 'default'" },
+            { name: 'completed_at', type: 'INTEGER' },
+            { name: 'meeting_link', type: 'TEXT' },
+            { name: 'recurrence_pattern', type: 'TEXT' },
+            { name: 'recurrence_end_date', type: 'INTEGER' },
+            { name: 'parent_topic_id', type: 'INTEGER' }
+        ];
+        
+        for (const column of topicsColumnsToAdd) {
+            if (!topicsColumns.includes(column.name)) {
+                try {
+                    db.exec(`ALTER TABLE topics ADD COLUMN ${column.name} ${column.type}`);
+                    console.log(`➕ topics 테이블에 ${column.name} 컬럼 추가`);
+                } catch (e) {
+                    // 컬럼이 이미 존재할 수 있음
+                }
+            }
+        }
+        
+        // reminders 테이블 생성
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic_id INTEGER NOT NULL,
+                type TEXT NOT NULL,
+                scheduled_at INTEGER NOT NULL,
+                delivered_at INTEGER,
+                notification_type TEXT DEFAULT 'channel',
+                retry_count INTEGER DEFAULT 0,
+                last_retry_at INTEGER,
+                recurrence_index INTEGER DEFAULT 0,
+                created_at INTEGER DEFAULT (unixepoch() * 1000),
+                FOREIGN KEY (topic_id) REFERENCES topics (id) ON DELETE CASCADE,
+                UNIQUE(topic_id, type, scheduled_at)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_reminders_scheduled ON reminders(scheduled_at);
+            CREATE INDEX IF NOT EXISTS idx_reminders_topic ON reminders(topic_id);
+            CREATE INDEX IF NOT EXISTS idx_reminders_delivered ON reminders(delivered_at);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_reminders_unique ON reminders(topic_id, type, scheduled_at);
+        `);
+        
+        console.log('✅ 리마인더 테이블이 생성되었습니다');
+    } catch (error) {
+        console.error('리마인더 테이블 생성 실패:', error);
+    }
+    
     console.log('✅ 데이터베이스가 초기화되었습니다');
 }
 
 export function addTopic(data) {
+    // 길드 설정에서 기본 리마인더 정책 가져오기
+    const guildSettings = getGuildSettings(data.guild_id);
+    const defaultPolicy = guildSettings?.reminder_default_policy || 'default';
+
     const stmt = db.prepare(`
-        INSERT INTO topics (guild_id, channel_id, message_id, title, status, created_by)
-        VALUES (@guild_id, @channel_id, @message_id, @title, @status, @created_by)
+        INSERT INTO topics (guild_id, channel_id, message_id, title, status, created_by, meeting_date, reminder_policy)
+        VALUES (@guild_id, @channel_id, @message_id, @title, @status, @created_by, @meeting_date, @reminder_policy)
     `);
 
-    const result = stmt.run(data);
+    const result = stmt.run({
+        ...data,
+        meeting_date: data.meeting_date || null,
+        reminder_policy: data.reminder_policy || defaultPolicy
+    });
     return result.lastInsertRowid;
 }
 
 export function updateTopicThreadId(topicId, threadId) {
     const stmt = db.prepare(`
         UPDATE topics 
-        SET thread_id = ?, updated_at = (strftime('%s','now'))
+        SET thread_id = ?, updated_at = unixepoch() * 1000
         WHERE id = ?
     `);
 
@@ -152,7 +219,7 @@ export function getTopics(guildId, statusFilter = '전체') {
 export function updateTopicStatus(topicId, status) {
     const stmt = db.prepare(`
         UPDATE topics 
-        SET status = ?, updated_at = (strftime('%s','now'))
+        SET status = ?, updated_at = unixepoch() * 1000
         WHERE id = ?
     `);
 
@@ -169,14 +236,6 @@ export function getTopicByThreadId(threadId) {
     return stmt.get(threadId);
 }
 
-export function updateTopicContent(topicId, content) {
-    const stmt = db.prepare(`
-        UPDATE topics 
-        SET content = ?, updated_at = datetime('now') 
-        WHERE id = ?
-    `);
-    return stmt.run(content, topicId);
-}
 
 export function getGuildSettings(guildId) {
     const stmt = db.prepare('SELECT * FROM guild_settings WHERE guild_id = ?');
@@ -260,7 +319,7 @@ export function upsertGuildSettings(guildId, settings) {
             gemini_model = COALESCE(@gemini_model, gemini_model),
             ai_api_key_encrypted = COALESCE(@ai_api_key_encrypted, ai_api_key_encrypted),
             mention_suppress = COALESCE(@mention_suppress, mention_suppress),
-            updated_at = (strftime('%s','now'))
+            updated_at = unixepoch() * 1000
     `);
     
     stmt.run({
@@ -338,7 +397,7 @@ export function updateTemplate(guildId, key, data) {
         SET title = @title, 
             body = @body, 
             checklist = @checklist,
-            updated_at = (strftime('%s','now'))
+            updated_at = unixepoch() * 1000
         WHERE guild_id = @guild_id AND key = @key
     `);
     
@@ -485,3 +544,113 @@ process.on('SIGTERM', () => {
     closeDatabase();
     process.exit(0);
 });
+
+// 리마인더 관련 함수들
+export function addReminder(data) {
+    const stmt = db.prepare(`
+        INSERT OR IGNORE INTO reminders (topic_id, type, scheduled_at, notification_type)
+        VALUES (@topic_id, @type, @scheduled_at, @notification_type)
+    `);
+
+    const result = stmt.run(data);
+    return result.lastInsertRowid;
+}
+
+export function getPendingReminders(now) {
+    const stmt = db.prepare(`
+        SELECT r.*, t.title, t.thread_id, t.created_by, t.guild_id, t.channel_id
+        FROM reminders r
+        JOIN topics t ON r.topic_id = t.id
+        WHERE r.scheduled_at <= ? AND r.delivered_at IS NULL
+        ORDER BY r.scheduled_at ASC
+        LIMIT 50
+    `);
+    
+    return stmt.all(now);
+}
+
+export function markReminderDelivered(reminderId) {
+    const stmt = db.prepare(`
+        UPDATE reminders
+        SET delivered_at = unixepoch() * 1000
+        WHERE id = ?
+    `);
+    
+    const result = stmt.run(reminderId);
+    return result.changes > 0;
+}
+
+export function updateReminderSchedule(reminderId, newScheduledAt) {
+    const stmt = db.prepare(`
+        UPDATE reminders
+        SET scheduled_at = ?,
+            delivered_at = NULL
+        WHERE id = ?
+    `);
+    
+    const result = stmt.run(newScheduledAt, reminderId);
+    return result.changes > 0;
+}
+
+export function getRemindersByTopic(topicId) {
+    const stmt = db.prepare(`
+        SELECT * FROM reminders
+        WHERE topic_id = ?
+        ORDER BY scheduled_at ASC
+    `);
+    
+    return stmt.all(topicId);
+}
+
+export function deleteRemindersByTopic(topicId) {
+    const stmt = db.prepare(`
+        DELETE FROM reminders
+        WHERE topic_id = ?
+    `);
+    
+    const result = stmt.run(topicId);
+    return result.changes;
+}
+
+export function getUpcomingReminders(guildId, limit = 10) {
+    const stmt = db.prepare(`
+        SELECT r.*, t.title, t.thread_id
+        FROM reminders r
+        JOIN topics t ON r.topic_id = t.id
+        WHERE t.guild_id = ? AND r.delivered_at IS NULL
+        ORDER BY r.scheduled_at ASC
+        LIMIT ?
+    `);
+    
+    return stmt.all(guildId, limit);
+}
+
+export function updateTopicMeetingDate(topicId, meetingDate) {
+    const stmt = db.prepare(`
+        UPDATE topics
+        SET meeting_date = ?,
+            updated_at = unixepoch() * 1000
+        WHERE id = ?
+    `);
+
+    const result = stmt.run(meetingDate, topicId);
+    return result.changes > 0;
+}
+
+// 리마인더 재시도 관련 함수
+export function updateReminderRetry(reminderId) {
+    const stmt = db.prepare(`
+        UPDATE reminders
+        SET retry_count = retry_count + 1,
+            last_retry_at = unixepoch() * 1000
+        WHERE id = ?
+    `);
+
+    return stmt.run(reminderId);
+}
+
+export function getReminderRetryCount(reminderId) {
+    const stmt = db.prepare('SELECT retry_count FROM reminders WHERE id = ?');
+    const result = stmt.get(reminderId);
+    return result?.retry_count || 0;
+}
